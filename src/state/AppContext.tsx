@@ -14,6 +14,7 @@ type Action =
   | { type: 'createSession'; title?: string }
   | { type: 'selectSession'; id: string }
   | { type: 'renameSession'; id: string; title: string }
+  | { type: 'touchSession'; id: string }
   | { type: 'setSystemPrompt'; id: string; prompt: string }
   | { type: 'addMessage'; message: Message }
   | { type: 'updateMessage'; id: string; patch: Partial<Message> }
@@ -45,6 +46,9 @@ const reducer = (state: State, action: Action): State => {
     }
     case 'renameSession': {
       return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, title: action.title } : s)) }
+    }
+    case 'touchSession': {
+      return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, lastActiveAt: Date.now() } : s)) }
     }
     case 'setSystemPrompt': {
       return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, systemPrompt: action.prompt } : s)) }
