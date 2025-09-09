@@ -4,11 +4,18 @@ import { nanoid } from 'nanoid'
 import type { Message } from './types'
 import { buildMainContext, buildReplyContext } from './lib/contextBuilder'
 import { streamChatCompletion } from './lib/openaiClient'
-import { UI_MODELS, mapUiModelToApi } from './lib/models'
+import { UI_MODELS, mapUiModelToApi, supportsReasoningEffort, supportsTemperature } from './lib/models'
 import { generateSessionTitle } from './lib/titleGenerator'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { encryptString, decryptString } from './lib/crypto'
 
 const MODELS = UI_MODELS
+
+// Utility: truncate text to a maximum number of characters with ellipsis.
+const truncateText = (text: string, max = 20): string => {
+  const single = (text ?? '').replace(/\s+/g, ' ').trim()
+  return single.length > max ? single.slice(0, max) + '…' : single
+}
 
 const AppInner: React.FC = () => {
   const { state, dispatch } = useApp()
@@ -16,6 +23,26 @@ const AppInner: React.FC = () => {
   const [model, setModel] = useState(MODELS[0].id)
   const [isStreaming, setIsStreaming] = useState(false)
   const [aborter, setAborter] = useState<AbortController | null>(null)
+  const containerRef = React.useRef<HTMLDivElement | null>(null)
+  const [isResizing, setIsResizing] = useState(false)
+  const [rvWidth, setRvWidth] = useState<number>(state.ui.replyViewerWidth ?? 420)
+  React.useEffect(()=>{ setRvWidth(state.ui.replyViewerWidth ?? 420) }, [state.ui.replyViewerWidth])
+  React.useEffect(()=>{
+    if (!isResizing) return
+    const onMove = (e: MouseEvent) => {
+      const el = containerRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const right = rect.right
+      const newW = Math.round(Math.min(800, Math.max(280, right - e.clientX)))
+      setRvWidth(newW)
+    }
+    const onUp = () => { setIsResizing(false); dispatch({ type: 'setReplyViewerWidth', width: rvWidth }) }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp, { once: true })
+    return () => { window.removeEventListener('mousemove', onMove) }
+  }, [isResizing, rvWidth])
+  const startResize = (e: React.MouseEvent) => { e.preventDefault(); setIsResizing(true) }
 
   const sessionId = state.ui.activeSessionId ?? state.sessions[0]?.id
 
@@ -67,6 +94,8 @@ const AppInner: React.FC = () => {
         apiKey: state.settings.apiKey!,
         model: mapUiModelToApi(model),
         messages: [...ctx, { role: 'user', content: userMsg.content }],
+        temperature: supportsTemperature(model) ? session?.temperature : undefined,
+        reasoningEffort: supportsReasoningEffort(model) ? session?.reasoningEffort : undefined,
         onDelta: (delta) => dispatch({ type: 'updateMessage', id: assistantMsg.id, patch: { content: (assistantMsg.content += delta) } }),
         signal: controller.signal,
       })
@@ -100,11 +129,11 @@ const AppInner: React.FC = () => {
           <SettingsButton />
         </div>
       </header>
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden" ref={containerRef}>
         <SessionSidebar />
         <main className="flex-1 flex flex-col">
           <div className="border-b p-3 bg-gray-50">
-            <SystemPromptPanel />
+            <SystemPromptPanel currentModel={model} />
           </div>
           <div className="flex-1 overflow-auto p-4 space-y-3">
             {mainMessages.map(m => (
@@ -138,15 +167,20 @@ const AppInner: React.FC = () => {
             )}
           </div>
         </main>
+        <div
+          className="w-1 bg-gray-200 hover:bg-gray-300 cursor-col-resize"
+          onMouseDown={startResize}
+          title="Drag to resize"
+        />
         <ErrorBoundary>
-          <ReplyViewer />
+          <ReplyViewer width={rvWidth} />
         </ErrorBoundary>
       </div>
     </div>
   )
 }
 
-const SystemPromptPanel: React.FC = () => {
+  const SystemPromptPanel: React.FC<{ currentModel: string }> = ({ currentModel }) => {
   const { state, dispatch } = useApp()
   const sessionId = state.ui.activeSessionId ?? state.sessions[0]?.id
   const session = state.sessions.find(s => s.id === sessionId)
@@ -154,9 +188,41 @@ const SystemPromptPanel: React.FC = () => {
   if (!session) return null
   return (
     <div>
-      <button className="text-sm underline" onClick={()=>setOpen(o=>!o)}>{open ? 'Hide' : 'Show'} system prompt</button>
+      <button className="text-sm underline" onClick={()=>setOpen(o=>!o)}>{open ? 'Hide' : 'Show'} system settings</button>
       {open && (
-        <textarea className="border rounded w-full p-2 mt-2" placeholder="System prompt" value={session.systemPrompt ?? ''} onChange={e=>dispatch({ type: 'setSystemPrompt', id: session.id, prompt: e.target.value })} />
+        <>
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3 items-center">
+            {supportsTemperature(currentModel) && (
+              <label className="text-sm flex items-center gap-2">
+                <span className="whitespace-nowrap">Temperature</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  value={session.temperature ?? 0.7}
+                  onChange={e=>dispatch({ type: 'setSessionTemperature', id: session.id, temperature: Number(e.target.value) })}
+                />
+                <span className="text-xs text-gray-600 w-8">{(session.temperature ?? 0.5).toFixed(1)}</span>
+              </label>
+            )}
+            {supportsReasoningEffort(currentModel) && (
+              <label className="text-sm flex items-center gap-2">
+                <span className="whitespace-nowrap">Reasoning effort</span>
+                <select
+                  className="border rounded px-2 py-1"
+                  value={session.reasoningEffort ?? 'medium'}
+                  onChange={e=>dispatch({ type: 'setSessionReasoningEffort', id: session.id, effort: e.target.value as any })}
+                >
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </select>
+              </label>
+            )}
+          </div>
+          <textarea className="border rounded w-full p-2 mt-2" placeholder="System prompt" value={session.systemPrompt ?? ''} onChange={e=>dispatch({ type: 'setSystemPrompt', id: session.id, prompt: e.target.value })} />
+        </>
       )}
     </div>
   )
@@ -166,19 +232,66 @@ const SettingsButton: React.FC = () => {
   const { state, dispatch } = useApp()
   const [open, setOpen] = useState(false)
   const [apiKey, setApiKey] = useState(state.settings.apiKey ?? '')
+  const hasEncrypted = !!state.settings.apiKeyEncrypted
+  const locked = hasEncrypted && !state.settings.apiKey
+  const [mode, setMode] = useState<'unlock' | 'set'>(locked ? 'unlock' : 'set')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
   return (
     <>
       <button className="px-2 py-1 border rounded" onClick={()=>setOpen(true)}>Settings</button>
       {open && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
-          <div className="bg-white rounded border p-4 w-[420px]">
+          <div className="bg-white rounded border p-4 w-[460px]">
             <div className="font-semibold mb-2">Settings</div>
-            <label className="text-sm">OpenAI API Key</label>
-            <input className="border rounded w-full p-2 mt-1" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="sk-..." />
-            <div className="mt-3 flex justify-end gap-2">
-              <button className="px-2 py-1" onClick={()=>setOpen(false)}>Cancel</button>
-              <button className="px-2 py-1 bg-black text-white rounded" onClick={()=>{dispatch({ type: 'setSettings', settings: { apiKey } }); setOpen(false)}}>Save</button>
-            </div>
+            {mode === 'unlock' ? (
+              <div className="space-y-2">
+                <div className="text-sm text-gray-700">An encrypted API key is stored. Enter password to unlock for this session.</div>
+                <label className="text-sm">Password</label>
+                <input className="border rounded w-full p-2" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
+                <div className="mt-3 flex justify-between items-center">
+                  <button className="text-xs underline" onClick={()=>{ setMode('set'); setPassword('') }}>Replace key…</button>
+                  <div className="flex gap-2">
+                    <button className="px-2 py-1" onClick={()=>setOpen(false)}>Cancel</button>
+                    <button className="px-2 py-1 bg-black text-white rounded" disabled={busy || !password} onClick={async ()=>{
+                      if (!state.settings.apiKeyEncrypted) return
+                      try {
+                        setBusy(true)
+                        const plain = await decryptString(state.settings.apiKeyEncrypted, password)
+                        dispatch({ type: 'setSettings', settings: { apiKey: plain } })
+                        setOpen(false); setPassword('')
+                      } catch (e) {
+                        alert('Decryption failed. Check password.')
+                      } finally { setBusy(false) }
+                    }}>Unlock</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <label className="text-sm">OpenAI API Key</label>
+                <input className="border rounded w-full p-2" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="sk-..." />
+                <label className="text-sm">Set Password (required)</label>
+                <input className="border rounded w-full p-2" type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Password to encrypt key" />
+                <div className="text-xs text-gray-500">Your password is not stored; losing it means re-entering the key.</div>
+                <div className="mt-3 flex justify-between items-center">
+                  {hasEncrypted && <button className="text-xs underline" onClick={()=>{ setMode('unlock'); setPassword('') }}>Unlock existing…</button>}
+                  <div className="flex gap-2">
+                    <button className="px-2 py-1" onClick={()=>setOpen(false)}>Cancel</button>
+                    <button className="px-2 py-1 bg-black text-white rounded" disabled={busy || !apiKey || !password} onClick={async ()=>{
+                      try {
+                        setBusy(true)
+                        const enc = await encryptString(apiKey, password)
+                        dispatch({ type: 'setSettings', settings: { apiKeyEncrypted: enc, apiKey } })
+                        setOpen(false); setPassword('')
+                      } catch(e) {
+                        alert('Encryption failed')
+                      } finally { setBusy(false) }
+                    }}>Save</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -238,7 +351,7 @@ const SessionSidebar: React.FC = () => {
   )
 }
 
-const ReplyViewer: React.FC = () => {
+const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
   const { state, dispatch } = useApp()
   const anchorId = state.ui.activeReplyViewerAnchorId
   const sessionId = state.ui.activeSessionId ?? state.sessions[0]?.id
@@ -250,6 +363,7 @@ const ReplyViewer: React.FC = () => {
   // Hooks must be called in a consistent order across renders.
   // Keep this state above any conditional early returns.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const replyParent = replyParentId ? state.messages.find(m => m.id === replyParentId) : undefined
 
   if (!anchorId || !session) return <aside className="w-0" />
   const anchor = state.messages.find(m => m.id === anchorId)
@@ -276,24 +390,38 @@ const ReplyViewer: React.FC = () => {
     return next
   })
   const renderTree = (parentId?: string, depth = 0): React.ReactNode => {
-    const list = byParent.get(parentId ?? '__root__') || []
+    let list: Message[]
+    if (parentId === undefined) {
+      // Treat both true roots (no parent) and direct children of the anchor as top-level entries
+      const roots = byParent.get('__root__') || []
+      const direct = byParent.get(anchorId) || []
+      list = [...roots, ...direct]
+    } else {
+      list = byParent.get(parentId) || []
+    }
     return list.map(n => (
       <div key={n.id}>
-        <div className="border rounded p-2" style={{ marginLeft: depth * 12 }}>
-          <div className="flex items-center gap-2">
-            <button className="text-xs px-1 py-0.5 border rounded" onClick={()=>toggleCollapse(n.id)}>{collapsed.has(n.id) ? '+' : '−'}</button>
-            <div className="text-xs text-gray-500">{n.role}</div>
+        <div className="rounded-md border border-gray-200 bg-white p-2 shadow-sm">
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <button className="h-5 w-5 grid place-items-center border rounded" onClick={()=>toggleCollapse(n.id)} aria-label={collapsed.has(n.id)?'Expand':'Collapse'}>
+              {collapsed.has(n.id) ? '+' : '−'}
+            </button>
+            <div>{n.role}</div>
           </div>
           {!collapsed.has(n.id) && (
             <>
-              <div className="mt-1 whitespace-pre-wrap">{n.content || <span className='text-gray-400'>…</span>}</div>
-              <div className="mt-2 flex items-center gap-2">
-                <label className="text-sm flex items-center gap-1">
+              <div className={`mt-1 whitespace-pre-wrap ${depth >= 1 ? 'text-[13px] leading-5' : 'text-sm leading-6'}`}>{n.content || <span className='text-gray-400'>…</span>}</div>
+              <div className="mt-2 flex items-center gap-3">
+                <label className="text-xs flex items-center gap-1">
                   <input type="checkbox" checked={!!n.includeInContext} onChange={e=>toggleInclude(n.id, e.target.checked)} /> Include in context
                 </label>
-                <button className="text-sm px-2 py-1 border rounded" onClick={()=>setReplyParentId(n.id)}>Reply</button>
+                {n.role === 'assistant' && (
+                  <button className="text-xs px-2 py-1 border rounded" onClick={()=>setReplyParentId(n.id)}>Reply</button>
+                )}
               </div>
-              {renderTree(n.id, depth + 1)}
+              <div className="mt-2 ml-3 pl-3 border-l border-gray-200 space-y-2">
+                {renderTree(n.id, depth + 1)}
+              </div>
             </>
           )}
         </div>
@@ -325,13 +453,25 @@ const ReplyViewer: React.FC = () => {
   const onSendReply = async (parentId?: string) => {
     if (!replyText.trim()) return
     if (!state.settings.apiKey) { alert('Set your OpenAI API key in Settings'); return }
+    // Guard: replies should target assistant messages. If a user node was passed,
+    // walk up to the nearest assistant ancestor within this thread; otherwise fall back to root.
+    if (parentId) {
+      const getById = (id: string | undefined) => state.messages.find(m => m.id === id)
+      let node = getById(parentId)
+      let hops = 0
+      while (node && node.role !== 'assistant' && hops < 50) {
+        node = getById(node.parentId)
+        hops += 1
+      }
+      parentId = node?.role === 'assistant' ? node.id : undefined
+    }
     const user = {
       id: nanoid(), sessionId: session.id, role: 'user' as const, content: replyText, includeInContext: false, createdAt: Date.now(), anchorMessageId: anchorId, parentId,
     }
     dispatch({ type: 'addMessage', message: user })
     setReplyText('')
     const assistant: Message = {
-      id: nanoid(), sessionId: session.id, role: 'assistant', content: '', includeInContext: false, createdAt: Date.now(), anchorMessageId: anchorId, parentId: user.id, model: anchor.model ?? 'gpt-40',
+      id: nanoid(), sessionId: session.id, role: 'assistant', content: '', includeInContext: false, createdAt: Date.now(), anchorMessageId: anchorId, parentId: user.id, model: anchor.model ?? 'gpt-4o',
     }
     dispatch({ type: 'addMessage', message: assistant })
 
@@ -344,6 +484,8 @@ const ReplyViewer: React.FC = () => {
         apiKey: state.settings.apiKey!,
         model: mapUiModelToApi(assistant.model!),
         messages: [...ctx, { role: 'user', content: user.content }],
+        temperature: supportsTemperature(assistant.model!) ? session?.temperature : undefined,
+        reasoningEffort: supportsReasoningEffort(assistant.model!) ? session?.reasoningEffort : undefined,
         onDelta: (delta) => dispatch({ type: 'updateMessage', id: assistant.id, patch: { content: (assistant.content += delta) } }),
         signal: controller.signal,
       })
@@ -358,18 +500,32 @@ const ReplyViewer: React.FC = () => {
   const stop = () => aborter?.abort()
 
   return (
-    <aside className="w-[420px] border-l bg-white flex flex-col">
+    <aside className="border-l bg-white flex flex-col" style={{ width }}>
       <div className="p-3 border-b flex items-center justify-between">
         <div>
           <div className="text-xs text-gray-500">Replying to</div>
-          <div className="text-sm truncate max-w-[320px]" title={anchor.content}>{anchor.content}</div>
+          <div className="text-sm" title={anchor.content}>{truncateText(anchor.content, 20)}</div>
         </div>
         <button className="px-2 py-1 border rounded" onClick={onClose}>Close</button>
       </div>
-      <div className="flex-1 overflow-auto p-3 space-y-2">{renderTree(undefined, 0)}</div>
+      <div className="flex-1 overflow-auto p-3 space-y-2">
+        {(() => {
+          const content = renderTree(undefined, 0)
+          if (Array.isArray(content) && content.length === 0) {
+            return <div className="text-sm text-gray-500">No replies yet. Start the thread below.</div>
+          }
+          return content
+        })()}
+      </div>
       <div className="border-t p-3 flex items-center gap-2">
         {replyParentId && (
-          <div className="text-xs text-gray-600">Replying to node {replyParentId.slice(0,6)} <button className="underline" onClick={()=>setReplyParentId(undefined)}>clear</button></div>
+          <div className="text-xs text-gray-600 flex items-center gap-1">
+            <span>Replying to</span>
+            <span className="text-sm" title={replyParent?.content ?? replyParentId}>
+              {truncateText(replyParent?.content ?? `node ${replyParentId.slice(0,6)}`, 20)}
+            </span>
+            <button className="underline" onClick={()=>setReplyParentId(undefined)}>clear</button>
+          </div>
         )}
         <textarea className="border rounded flex-1 p-2 min-h-[60px]" placeholder="Type a reply" value={replyText} onChange={e=>setReplyText(e.target.value)} />
         {!isStreaming ? (

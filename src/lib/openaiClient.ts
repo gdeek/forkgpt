@@ -6,13 +6,14 @@ export interface StreamOptions {
   messages: ChatMessage[]
   temperature?: number
   maxTokens?: number
+  reasoningEffort?: 'low' | 'medium' | 'high'
   onDelta: (delta: string) => void
   signal?: AbortSignal
 }
 
 // Minimal client for OpenAI Chat Completions streaming
 export const streamChatCompletion = async (opts: StreamOptions): Promise<void> => {
-  const { apiKey, model, messages, temperature, maxTokens, onDelta, signal } = opts
+  const { apiKey, model, messages, temperature, maxTokens, reasoningEffort, onDelta, signal } = opts
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -24,6 +25,7 @@ export const streamChatCompletion = async (opts: StreamOptions): Promise<void> =
       messages,
       temperature,
       max_tokens: maxTokens,
+      ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
       stream: true,
     }),
     signal,
@@ -59,4 +61,3 @@ export const streamChatCompletion = async (opts: StreamOptions): Promise<void> =
     }
   }
 }
-

@@ -6,7 +6,7 @@ describe('context builder', () => {
   const session = { id: 's1', title: 't', createdAt: 1, lastActiveAt: 1, systemPrompt: 'sys' }
 
   test('reply context includes branch first and trims branch oldest', () => {
-    const anchor = mk('a1', { role: 'assistant' as const, model: 'gpt-40' })
+    const anchor = mk('a1', { role: 'assistant' as const, model: 'gpt-4o' })
     const r1 = mk('r1', { anchorMessageId: 'a1' })
     const r2 = mk('r2', { anchorMessageId: 'a1', parentId: 'r1' })
     const all = [anchor, r1, r2]

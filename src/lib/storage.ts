@@ -41,7 +41,12 @@ export const loadSettings = (): Settings => {
 }
 
 export const saveSettings = (settings: Settings) => {
-  try { if (typeof localStorage !== 'undefined') localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)) } catch {}
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const { apiKey: _volatileApiKey, ...rest } = settings
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(rest))
+    }
+  } catch {}
 }
 
 export const loadUI = (): UIState => {

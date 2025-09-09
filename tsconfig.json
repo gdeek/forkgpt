@@ -13,8 +13,8 @@
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["jest"]
+    "types": ["jest", "react", "react-dom"]
   },
-  "include": ["src", "tests", "vite.config.ts"],
+  "include": ["src", "tests", "vite.config.mts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -17,10 +17,13 @@ type Action =
   | { type: 'deleteSession'; id: string }
   | { type: 'touchSession'; id: string }
   | { type: 'setSystemPrompt'; id: string; prompt: string }
+  | { type: 'setSessionTemperature'; id: string; temperature: number }
+  | { type: 'setSessionReasoningEffort'; id: string; effort: 'low' | 'medium' | 'high' }
   | { type: 'addMessage'; message: Message }
   | { type: 'updateMessage'; id: string; patch: Partial<Message> }
   | { type: 'setActiveReplyAnchor'; anchorId?: string }
   | { type: 'setSettings'; settings: Partial<Settings> }
+  | { type: 'setReplyViewerWidth'; width: number }
 
 const loadInitialState = (): State => ({
   sessions: loadSessions(),
@@ -64,6 +67,12 @@ const reducer = (state: State, action: Action): State => {
     case 'setSystemPrompt': {
       return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, systemPrompt: action.prompt } : s)) }
     }
+    case 'setSessionTemperature': {
+      return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, temperature: action.temperature } : s)) }
+    }
+    case 'setSessionReasoningEffort': {
+      return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, reasoningEffort: action.effort } : s)) }
+    }
     case 'addMessage': {
       return { ...state, messages: [...state.messages, action.message] }
     }
@@ -72,6 +81,9 @@ const reducer = (state: State, action: Action): State => {
     }
     case 'setActiveReplyAnchor': {
       return { ...state, ui: { ...state.ui, activeReplyViewerAnchorId: action.anchorId } }
+    }
+    case 'setReplyViewerWidth': {
+      return { ...state, ui: { ...state.ui, replyViewerWidth: action.width } }
     }
     case 'setSettings': {
       return { ...state, settings: { ...state.settings, ...action.settings } }

@@ -6,6 +6,8 @@ export interface Session {
   systemPrompt?: string
   createdAt: number
   lastActiveAt: number
+  temperature?: number
+  reasoningEffort?: 'low' | 'medium' | 'high'
 }
 
 export interface Message {
@@ -23,10 +25,11 @@ export interface Message {
 export interface Settings {
   apiKey?: string
   defaultModel?: string
+  apiKeyEncrypted?: string
 }
 
 export interface UIState {
   activeSessionId?: string
   activeReplyViewerAnchorId?: string
+  replyViewerWidth?: number
 }
-
