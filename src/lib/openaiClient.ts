@@ -14,20 +14,25 @@ export interface StreamOptions {
 // Minimal client for OpenAI Chat Completions streaming
 export const streamChatCompletion = async (opts: StreamOptions): Promise<void> => {
   const { apiKey, model, messages, temperature, maxTokens, reasoningEffort, onDelta, signal } = opts
+  const payload: Record<string, any> = {
+    model,
+    messages,
+    stream: true,
+  }
+  if (typeof temperature === 'number') payload.temperature = temperature
+  if (typeof maxTokens === 'number') {
+    if (model === 'gpt-5' || model.startsWith('o3')) payload.max_completion_tokens = maxTokens
+    else payload.max_tokens = maxTokens
+  }
+  if (reasoningEffort) payload.reasoning_effort = reasoningEffort
+
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-      ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
-      stream: true,
-    }),
+    body: JSON.stringify(payload),
     signal,
   })
   if (!res.ok || !res.body) {

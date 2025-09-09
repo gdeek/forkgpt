@@ -20,14 +20,7 @@ export const setIncludeFlag = (messages: Message[], id: string, include: boolean
   return messages.map(m => (m.id === id ? { ...m, includeInContext: true } : m))
 }
 
-export const isEffectivelyIncluded = (node: Message, messagesIndex: Map<string, Message>): boolean => {
-  if (!node.includeInContext) return false
-  let cur: Message | undefined = node
-  while (cur?.parentId) {
-    const p = messagesIndex.get(cur.parentId)
-    if (!p || !p.includeInContext) return false
-    cur = p
-  }
-  return true
+export const isEffectivelyIncluded = (node: Message, _messagesIndex: Map<string, Message>): boolean => {
+  // include a reply if its own toggle is ON. ancestors do not need to be included.
+  return !!node.includeInContext
 }
-

@@ -8,6 +8,8 @@ export interface Session {
   lastActiveAt: number
   temperature?: number
   reasoningEffort?: 'low' | 'medium' | 'high'
+  mainTurnsLimit?: number
+  maxTokens?: number
 }
 
 export interface Message {
@@ -32,4 +34,5 @@ export interface UIState {
   activeSessionId?: string
   activeReplyViewerAnchorId?: string
   replyViewerWidth?: number
+  theme?: 'light' | 'dark'
 }

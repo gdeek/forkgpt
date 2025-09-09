@@ -19,11 +19,14 @@ type Action =
   | { type: 'setSystemPrompt'; id: string; prompt: string }
   | { type: 'setSessionTemperature'; id: string; temperature: number }
   | { type: 'setSessionReasoningEffort'; id: string; effort: 'low' | 'medium' | 'high' }
+  | { type: 'setSessionMainTurnsLimit'; id: string; value: number }
+  | { type: 'setSessionMaxTokens'; id: string; value: number }
   | { type: 'addMessage'; message: Message }
   | { type: 'updateMessage'; id: string; patch: Partial<Message> }
   | { type: 'setActiveReplyAnchor'; anchorId?: string }
   | { type: 'setSettings'; settings: Partial<Settings> }
   | { type: 'setReplyViewerWidth'; width: number }
+  | { type: 'setTheme'; theme: 'light' | 'dark' }
 
 const loadInitialState = (): State => ({
   sessions: loadSessions(),
@@ -42,6 +45,10 @@ const reducer = (state: State, action: Action): State => {
         title: action.title ?? 'New Session',
         createdAt: Date.now(),
         lastActiveAt: Date.now(),
+        temperature: 1,
+        reasoningEffort: 'medium',
+        mainTurnsLimit: 6,
+        maxTokens: 8000,
       }
       return { ...state, sessions: [...state.sessions, s], ui: { ...state.ui, activeSessionId: s.id } }
     }
@@ -68,10 +75,19 @@ const reducer = (state: State, action: Action): State => {
       return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, systemPrompt: action.prompt } : s)) }
     }
     case 'setSessionTemperature': {
-      return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, temperature: action.temperature } : s)) }
+      const t = Math.min(1, Math.max(0, action.temperature))
+      return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, temperature: t } : s)) }
     }
     case 'setSessionReasoningEffort': {
       return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, reasoningEffort: action.effort } : s)) }
+    }
+    case 'setSessionMainTurnsLimit': {
+      const val = Math.min(10, Math.max(0, action.value))
+      return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, mainTurnsLimit: val } : s)) }
+    }
+    case 'setSessionMaxTokens': {
+      const val = Math.min(128000, Math.max(0, action.value))
+      return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, maxTokens: val } : s)) }
     }
     case 'addMessage': {
       return { ...state, messages: [...state.messages, action.message] }
@@ -84,6 +100,9 @@ const reducer = (state: State, action: Action): State => {
     }
     case 'setReplyViewerWidth': {
       return { ...state, ui: { ...state.ui, replyViewerWidth: action.width } }
+    }
+    case 'setTheme': {
+      return { ...state, ui: { ...state.ui, theme: action.theme } }
     }
     case 'setSettings': {
       return { ...state, settings: { ...state.settings, ...action.settings } }

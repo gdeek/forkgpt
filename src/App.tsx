@@ -44,15 +44,29 @@ const AppInner: React.FC = () => {
   }, [isResizing, rvWidth])
   const startResize = (e: React.MouseEvent) => { e.preventDefault(); setIsResizing(true) }
 
+  // Apply theme to <html> for Tailwind dark mode
+  React.useEffect(() => {
+    const theme = state.ui.theme ?? 'light'
+    const root = document.documentElement
+    if (theme === 'dark') root.classList.add('dark'); else root.classList.remove('dark')
+  }, [state.ui.theme])
+
   const sessionId = state.ui.activeSessionId ?? state.sessions[0]?.id
 
   const session = useMemo(() => state.sessions.find(s => s.id === sessionId), [state.sessions, sessionId])
   const messages = useMemo(() => state.messages.filter(m => m.sessionId === sessionId).sort((a,b)=>a.createdAt-b.createdAt), [state.messages, sessionId])
   const mainMessages = useMemo(() => messages.filter(m => !m.anchorMessageId), [messages])
   const anchorId = state.ui.activeReplyViewerAnchorId
+  const hasSession = !!session
 
   const createSession = () => dispatch({ type: 'createSession' })
-  React.useEffect(()=>{ if (state.sessions.length === 0) createSession() }, [])
+  // Guard against React.StrictMode double-effect and race on first load
+  const ensuredFirstSession = React.useRef(false)
+  React.useEffect(() => {
+    if (ensuredFirstSession.current) return
+    if (state.sessions.length === 0) createSession()
+    ensuredFirstSession.current = true
+  }, [state.sessions.length])
   const selectSession = (id: string) => dispatch({ type: 'selectSession', id })
 
   const onSendMain = async () => {
@@ -85,7 +99,12 @@ const AppInner: React.FC = () => {
     }
     dispatch({ type: 'addMessage', message: assistantMsg })
 
-    const ctx = buildMainContext({ session, allMessages: [...state.messages, userMsg, assistantMsg] })
+    const ctx = buildMainContext({
+      session,
+      allMessages: [...state.messages, userMsg, assistantMsg],
+      mainTurnsLimit: session?.mainTurnsLimit,
+      maxTokens: session?.maxTokens,
+    })
     const controller = new AbortController()
     setAborter(controller)
     setIsStreaming(true)
@@ -96,6 +115,7 @@ const AppInner: React.FC = () => {
         messages: [...ctx, { role: 'user', content: userMsg.content }],
         temperature: supportsTemperature(model) ? session?.temperature : undefined,
         reasoningEffort: supportsReasoningEffort(model) ? session?.reasoningEffort : undefined,
+        maxTokens: session?.maxTokens,
         onDelta: (delta) => dispatch({ type: 'updateMessage', id: assistantMsg.id, patch: { content: (assistantMsg.content += delta) } }),
         signal: controller.signal,
       })
@@ -123,58 +143,76 @@ const AppInner: React.FC = () => {
 
   return (
     <div className="h-screen flex flex-col">
-      <header className="border-b bg-white px-4 py-2 flex items-center gap-2">
+      <header className="border-b bg-white dark:bg-gray-900 dark:border-gray-700 px-4 py-2 flex items-center gap-2">
         <div className="font-semibold">ForkGPT</div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <ThemeToggle />
           <SettingsButton />
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden" ref={containerRef}>
         <SessionSidebar />
-        <main className="flex-1 flex flex-col">
-          <div className="border-b p-3 bg-gray-50">
-            <SystemPromptPanel currentModel={model} />
-          </div>
-          <div className="flex-1 overflow-auto p-4 space-y-3">
-            {mainMessages.map(m => (
-              <div key={m.id} className="bg-white border rounded p-3">
-                <div className="text-xs text-gray-500 mb-1">{m.role}{m.model ? ` · ${m.model}` : ''}</div>
-                <div className="whitespace-pre-wrap">{m.content || <span className="text-gray-400">…</span>}</div>
-                {!m.anchorMessageId && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <label className="text-sm flex items-center gap-1">
-                      <input type="checkbox" checked={!!m.includeInContext} onChange={e=>dispatch({ type: 'updateMessage', id: m.id, patch: { includeInContext: e.target.checked } })} /> Include in context
-                    </label>
-                  </div>
-                )}
-                {m.role === 'assistant' && !m.anchorMessageId && (
-                  <div className="mt-2">
-                    <button className="text-sm px-2 py-1 border rounded" onClick={()=>onReply(m.id)}>Reply →</button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="border-t p-3 flex items-center gap-2">
-            <select className="border rounded px-2 py-1" value={model} onChange={e=>setModel(e.target.value)}>
-              {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
-            <textarea className="border rounded flex-1 p-2 min-h-[60px]" placeholder="Type your message" value={composer} onChange={e=>setComposer(e.target.value)} />
-            {!isStreaming ? (
-              <button className="px-3 py-2 bg-black text-white rounded" onClick={onSendMain}>Send</button>
+        <main className="flex-1 flex flex-col bg-white dark:bg-gray-900">
+          {hasSession && (
+            <div className="border-b dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900">
+              <SystemPromptPanel currentModel={model} />
+            </div>
+          )}
+          <div className="flex-1 overflow-auto p-4 space-y-3 bg-white dark:bg-gray-900">
+            {hasSession ? (
+              mainMessages.map(m => (
+                <div key={m.id} className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded p-3">
+                  <div className="text-xs text-gray-500 mb-1">{m.role}{m.model ? ` · ${m.model}` : ''}</div>
+                  <div className="whitespace-pre-wrap">{m.content || <span className="text-gray-400">…</span>}</div>
+                  {/* Main chat messages are always included in context now. */}
+                  {m.role === 'assistant' && !m.anchorMessageId && (
+                    <div className="mt-2">
+                      <button className="text-sm px-2 py-1 border rounded" onClick={()=>onReply(m.id)}>Reply →</button>
+                    </div>
+                  )}
+                </div>
+              ))
             ) : (
-              <button className="px-3 py-2 bg-red-600 text-white rounded" onClick={stop}>Stop</button>
+              <div className="text-sm text-gray-500">Create a session to start chatting.</div>
             )}
           </div>
+          {hasSession && (
+            <div className="border-t dark:border-gray-700 bg-white dark:bg-gray-900 p-3 flex items-center gap-2">
+              <select className="border rounded px-2 py-1 bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700" value={model} onChange={e=>setModel(e.target.value as any)}>
+                {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+              <textarea
+                className="border rounded flex-1 p-2 min-h-[60px] bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700"
+                placeholder="Type your message"
+                value={composer}
+                onChange={e=>setComposer(e.target.value)}
+                onKeyDown={(e)=>{
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    if (!isStreaming) onSendMain()
+                  }
+                }}
+              />
+              {!isStreaming ? (
+                <button className="px-3 py-2 bg-black text-white rounded" onClick={onSendMain}>Send</button>
+              ) : (
+                <button className="px-3 py-2 bg-red-600 text-white rounded" onClick={stop}>Stop</button>
+              )}
+            </div>
+          )}
         </main>
-        <div
-          className="w-1 bg-gray-200 hover:bg-gray-300 cursor-col-resize"
-          onMouseDown={startResize}
-          title="Drag to resize"
-        />
-        <ErrorBoundary>
-          <ReplyViewer width={rvWidth} />
-        </ErrorBoundary>
+        {hasSession && anchorId && (
+          <div
+            className="w-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 cursor-col-resize"
+            onMouseDown={startResize}
+            title="Drag to resize"
+          />
+        )}
+        {hasSession && (
+          <ErrorBoundary>
+            <ReplyViewer width={rvWidth} />
+          </ErrorBoundary>
+        )}
       </div>
     </div>
   )
@@ -191,7 +229,7 @@ const AppInner: React.FC = () => {
       <button className="text-sm underline" onClick={()=>setOpen(o=>!o)}>{open ? 'Hide' : 'Show'} system settings</button>
       {open && (
         <>
-          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3 items-center">
+          <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 items-center">
             {supportsTemperature(currentModel) && (
               <label className="text-sm flex items-center gap-2">
                 <span className="whitespace-nowrap">Temperature</span>
@@ -200,17 +238,18 @@ const AppInner: React.FC = () => {
                   min={0}
                   max={1}
                   step={0.1}
-                  value={session.temperature ?? 0.7}
+                  value={Math.min(1, Math.max(0, session.temperature ?? 0.5))}
+                  className="flex-1 w-full max-w-[360px]"
                   onChange={e=>dispatch({ type: 'setSessionTemperature', id: session.id, temperature: Number(e.target.value) })}
                 />
-                <span className="text-xs text-gray-600 w-8">{(session.temperature ?? 0.5).toFixed(1)}</span>
+                <span className="text-xs text-gray-600 w-8">{(Math.min(1, Math.max(0, session.temperature ?? 0.7))).toFixed(1)}</span>
               </label>
             )}
             {supportsReasoningEffort(currentModel) && (
               <label className="text-sm flex items-center gap-2">
                 <span className="whitespace-nowrap">Reasoning effort</span>
                 <select
-                  className="border rounded px-2 py-1"
+                  className="border rounded px-2 py-1 bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700"
                   value={session.reasoningEffort ?? 'medium'}
                   onChange={e=>dispatch({ type: 'setSessionReasoningEffort', id: session.id, effort: e.target.value as any })}
                 >
@@ -220,8 +259,34 @@ const AppInner: React.FC = () => {
                 </select>
               </label>
             )}
+            <label className="text-sm flex items-center gap-2">
+              <span className="whitespace-nowrap flex items-center gap-1">
+                Main turns limit
+                <span title="Always include this many recent main chat user+assistant pairs. ReplyViewer selections are extra and don’t count toward this limit. Oldest main pairs drop first; if Max Tokens is exceeded, replies are trimmed before main pairs." className="inline-flex items-center justify-center w-4 h-4 rounded-full border text-xs text-gray-600">i</span>
+              </span>
+              <input
+                type="number"
+                min={0}
+                max={10}
+                className="border rounded px-2 py-1 w-20 bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700"
+                value={session.mainTurnsLimit ?? 6}
+                onChange={e=>dispatch({ type: 'setSessionMainTurnsLimit', id: session.id, value: Math.min(10, Math.max(0, Number(e.target.value))) })}
+              />
+            </label>
+            <label className="text-sm flex items-center gap-2">
+              <span className="whitespace-nowrap">Max tokens</span>
+              <input
+                type="number"
+                min={1000}
+                max={128000}
+                step={1000}
+                className="border rounded px-2 py-1 w-28 bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700"
+                value={session.maxTokens ?? 8000}
+                onChange={e=>dispatch({ type: 'setSessionMaxTokens', id: session.id, value: Math.min(128000, Math.max(1000, Number(e.target.value))) })}
+              />
+            </label>
           </div>
-          <textarea className="border rounded w-full p-2 mt-2" placeholder="System prompt" value={session.systemPrompt ?? ''} onChange={e=>dispatch({ type: 'setSystemPrompt', id: session.id, prompt: e.target.value })} />
+          <textarea className="border rounded w-full p-2 mt-2 bg-white dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700" placeholder="System prompt" value={session.systemPrompt ?? ''} onChange={e=>dispatch({ type: 'setSystemPrompt', id: session.id, prompt: e.target.value })} />
         </>
       )}
     </div>
@@ -231,26 +296,40 @@ const AppInner: React.FC = () => {
 const SettingsButton: React.FC = () => {
   const { state, dispatch } = useApp()
   const [open, setOpen] = useState(false)
-  const [apiKey, setApiKey] = useState(state.settings.apiKey ?? '')
-  const hasEncrypted = !!state.settings.apiKeyEncrypted
-  const locked = hasEncrypted && !state.settings.apiKey
-  const [mode, setMode] = useState<'unlock' | 'set'>(locked ? 'unlock' : 'set')
+  // Inputs (only used in "set" and "unlock" flows); never pre-fill with plaintext
+  const [apiKey, setApiKey] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
+  const [replaceMode, setReplaceMode] = useState(false)
+
+  const hasEncrypted = !!state.settings.apiKeyEncrypted
+  const isUnlocked = !!state.settings.apiKey
+
+  // Compute which view to show based on state + replace toggle
+  const view: 'set' | 'unlock' | 'unlocked' = replaceMode ? 'set' : (hasEncrypted ? (isUnlocked ? 'unlocked' : 'unlock') : 'set')
+
+  // Re-sync modal mode and inputs when opened or settings change
+  React.useEffect(() => {
+    if (!open) return
+    // Always reset inputs when opening settings
+    setApiKey('')
+    setPassword('')
+    setReplaceMode(false)
+  }, [open])
   return (
     <>
       <button className="px-2 py-1 border rounded" onClick={()=>setOpen(true)}>Settings</button>
       {open && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
-          <div className="bg-white rounded border p-4 w-[460px]">
+          <div className="bg-white dark:bg-gray-900 dark:text-gray-100 rounded border dark:border-gray-700 p-4 w-[460px]">
             <div className="font-semibold mb-2">Settings</div>
-            {mode === 'unlock' ? (
+            {view === 'unlock' ? (
               <div className="space-y-2">
                 <div className="text-sm text-gray-700">An encrypted API key is stored. Enter password to unlock for this session.</div>
                 <label className="text-sm">Password</label>
                 <input className="border rounded w-full p-2" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
                 <div className="mt-3 flex justify-between items-center">
-                  <button className="text-xs underline" onClick={()=>{ setMode('set'); setPassword('') }}>Replace key…</button>
+                  <button className="text-xs underline" onClick={()=>{ setReplaceMode(true); setPassword('') }}>Replace key…</button>
                   <div className="flex gap-2">
                     <button className="px-2 py-1" onClick={()=>setOpen(false)}>Cancel</button>
                     <button className="px-2 py-1 bg-black text-white rounded" disabled={busy || !password} onClick={async ()=>{
@@ -259,11 +338,28 @@ const SettingsButton: React.FC = () => {
                         setBusy(true)
                         const plain = await decryptString(state.settings.apiKeyEncrypted, password)
                         dispatch({ type: 'setSettings', settings: { apiKey: plain } })
-                        setOpen(false); setPassword('')
+                        setPassword('')
                       } catch (e) {
                         alert('Decryption failed. Check password.')
                       } finally { setBusy(false) }
                     }}>Unlock</button>
+                  </div>
+                </div>
+              </div>
+            ) : view === 'unlocked' ? (
+              <div className="space-y-3">
+                <div className="text-sm text-gray-700">API key is unlocked for this session.</div>
+                <div className="flex justify-between items-center">
+                  <button className="text-xs underline" onClick={()=>{ setReplaceMode(true); setApiKey(''); setPassword('') }}>Replace key…</button>
+                  <div className="flex gap-2">
+                    <button className="px-2 py-1" onClick={()=>setOpen(false)}>Close</button>
+                    <button
+                      className="px-2 py-1 bg-black text-white rounded"
+                      onClick={()=>{
+                        dispatch({ type: 'setSettings', settings: { apiKey: undefined } })
+                        setApiKey(''); setPassword('');
+                      }}
+                    >Lock now</button>
                   </div>
                 </div>
               </div>
@@ -275,15 +371,18 @@ const SettingsButton: React.FC = () => {
                 <input className="border rounded w-full p-2" type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Password to encrypt key" />
                 <div className="text-xs text-gray-500">Your password is not stored; losing it means re-entering the key.</div>
                 <div className="mt-3 flex justify-between items-center">
-                  {hasEncrypted && <button className="text-xs underline" onClick={()=>{ setMode('unlock'); setPassword('') }}>Unlock existing…</button>}
+                  {hasEncrypted && !replaceMode && <button className="text-xs underline" onClick={()=>{ setReplaceMode(false); setApiKey(''); setPassword('') }}>Unlock existing…</button>}
                   <div className="flex gap-2">
                     <button className="px-2 py-1" onClick={()=>setOpen(false)}>Cancel</button>
                     <button className="px-2 py-1 bg-black text-white rounded" disabled={busy || !apiKey || !password} onClick={async ()=>{
                       try {
                         setBusy(true)
                         const enc = await encryptString(apiKey, password)
-                        dispatch({ type: 'setSettings', settings: { apiKeyEncrypted: enc, apiKey } })
-                        setOpen(false); setPassword('')
+                        // Persist encrypted key and immediately lock: do NOT keep plaintext in memory
+                        dispatch({ type: 'setSettings', settings: { apiKeyEncrypted: enc, apiKey: undefined } })
+                        setApiKey('')
+                        setPassword('')
+                        setReplaceMode(false)
                       } catch(e) {
                         alert('Encryption failed')
                       } finally { setBusy(false) }
@@ -296,6 +395,19 @@ const SettingsButton: React.FC = () => {
         </div>
       )}
     </>
+  )
+}
+
+const ThemeToggle: React.FC = () => {
+  const { state, dispatch } = useApp()
+  const theme = state.ui.theme ?? 'light'
+  const next = theme === 'dark' ? 'light' : 'dark'
+  return (
+    <button
+      className="px-2 py-1 border rounded text-sm"
+      onClick={()=>dispatch({ type: 'setTheme', theme: next })}
+      title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+    >{theme === 'dark' ? '☀️' : '🌙'}</button>
   )
 }
 
@@ -313,14 +425,14 @@ const SessionSidebar: React.FC = () => {
     setRenamingId(null); setRenameVal('')
   }
   return (
-    <aside className="w-[260px] border-r bg-gray-50 flex flex-col">
-      <div className="p-2 border-b flex items-center justify-between">
+    <aside className="w-[260px] border-r dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex flex-col">
+      <div className="p-2 border-b dark:border-gray-700 flex items-center justify-between">
         <div className="text-sm font-medium">Sessions</div>
         <button className="px-2 py-1 border rounded text-sm" onClick={create}>New</button>
       </div>
       <div className="flex-1 overflow-auto">
         {sessions.map(s => (
-          <div key={s.id} className={`px-3 py-2 cursor-pointer hover:bg-gray-100 ${s.id===activeId?'bg-white border-l-4 border-black':''}`} onClick={()=>select(s.id)}>
+          <div key={s.id} className={`px-3 py-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 ${s.id===activeId?'bg-white dark:bg-gray-800 border-l-4 border-black':''}`} onClick={()=>select(s.id)}>
             {renamingId===s.id ? (
               <div className="flex items-center gap-2">
                 <input className="border rounded px-2 py-1 flex-1" value={renameVal} onChange={e=>setRenameVal(e.target.value)} onKeyDown={e=>{ if (e.key==='Enter') applyRename() }} />
@@ -401,7 +513,7 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
     }
     return list.map(n => (
       <div key={n.id}>
-        <div className="rounded-md border border-gray-200 bg-white p-2 shadow-sm">
+        <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2 shadow-sm">
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <button className="h-5 w-5 grid place-items-center border rounded" onClick={()=>toggleCollapse(n.id)} aria-label={collapsed.has(n.id)?'Expand':'Collapse'}>
               {collapsed.has(n.id) ? '+' : '−'}
@@ -411,15 +523,15 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
           {!collapsed.has(n.id) && (
             <>
               <div className={`mt-1 whitespace-pre-wrap ${depth >= 1 ? 'text-[13px] leading-5' : 'text-sm leading-6'}`}>{n.content || <span className='text-gray-400'>…</span>}</div>
-              <div className="mt-2 flex items-center gap-3">
-                <label className="text-xs flex items-center gap-1">
-                  <input type="checkbox" checked={!!n.includeInContext} onChange={e=>toggleInclude(n.id, e.target.checked)} /> Include in context
-                </label>
-                {n.role === 'assistant' && (
+              {n.role === 'assistant' && (
+                <div className="mt-2 flex items-center gap-3">
+                  <label className="text-xs flex items-center gap-1">
+                    <input type="checkbox" checked={!!n.includeInContext} onChange={e=>toggleInclude(n.id, e.target.checked)} /> Include in context
+                  </label>
                   <button className="text-xs px-2 py-1 border rounded" onClick={()=>setReplyParentId(n.id)}>Reply</button>
-                )}
-              </div>
-              <div className="mt-2 ml-3 pl-3 border-l border-gray-200 space-y-2">
+                </div>
+              )}
+              <div className="mt-2 ml-3 pl-3 border-l border-gray-200 dark:border-gray-700 space-y-2">
                 {renderTree(n.id, depth + 1)}
               </div>
             </>
@@ -475,7 +587,14 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
     }
     dispatch({ type: 'addMessage', message: assistant })
 
-    const ctx = buildReplyContext({ session, allMessages: [...state.messages, user, assistant], anchorMessageId: anchorId, parentId: user.id })
+    const ctx = buildReplyContext({
+      session,
+      allMessages: [...state.messages, user, assistant],
+      anchorMessageId: anchorId,
+      parentId: user.id,
+      mainTurnsLimit: session?.mainTurnsLimit,
+      maxTokens: session?.maxTokens,
+    })
     const controller = new AbortController()
     setAborter(controller)
     setIsStreaming(true)
@@ -486,6 +605,7 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
         messages: [...ctx, { role: 'user', content: user.content }],
         temperature: supportsTemperature(assistant.model!) ? session?.temperature : undefined,
         reasoningEffort: supportsReasoningEffort(assistant.model!) ? session?.reasoningEffort : undefined,
+        maxTokens: session?.maxTokens,
         onDelta: (delta) => dispatch({ type: 'updateMessage', id: assistant.id, patch: { content: (assistant.content += delta) } }),
         signal: controller.signal,
       })
@@ -500,15 +620,15 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
   const stop = () => aborter?.abort()
 
   return (
-    <aside className="border-l bg-white flex flex-col" style={{ width }}>
-      <div className="p-3 border-b flex items-center justify-between">
+    <aside className="border-l dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col" style={{ width }}>
+      <div className="p-3 border-b dark:border-gray-700 bg-white dark:bg-gray-900 flex items-center justify-between">
         <div>
           <div className="text-xs text-gray-500">Replying to</div>
           <div className="text-sm" title={anchor.content}>{truncateText(anchor.content, 20)}</div>
         </div>
         <button className="px-2 py-1 border rounded" onClick={onClose}>Close</button>
       </div>
-      <div className="flex-1 overflow-auto p-3 space-y-2">
+      <div className="flex-1 overflow-auto p-3 space-y-2 bg-white dark:bg-gray-900">
         {(() => {
           const content = renderTree(undefined, 0)
           if (Array.isArray(content) && content.length === 0) {
@@ -517,7 +637,7 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
           return content
         })()}
       </div>
-      <div className="border-t p-3 flex items-center gap-2">
+      <div className="border-t dark:border-gray-700 bg-white dark:bg-gray-900 p-3 flex items-center gap-2">
         {replyParentId && (
           <div className="text-xs text-gray-600 flex items-center gap-1">
             <span>Replying to</span>
@@ -527,7 +647,18 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
             <button className="underline" onClick={()=>setReplyParentId(undefined)}>clear</button>
           </div>
         )}
-        <textarea className="border rounded flex-1 p-2 min-h-[60px]" placeholder="Type a reply" value={replyText} onChange={e=>setReplyText(e.target.value)} />
+        <textarea
+          className="border rounded flex-1 p-2 min-h-[60px]"
+          placeholder="Type a reply"
+          value={replyText}
+          onChange={e=>setReplyText(e.target.value)}
+          onKeyDown={(e)=>{
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              if (!isStreaming) onSendReply(replyParentId)
+            }
+          }}
+        />
         {!isStreaming ? (
           <button className="px-3 py-2 bg-black text-white rounded" onClick={()=>onSendReply(replyParentId)}>Send</button>
         ) : (

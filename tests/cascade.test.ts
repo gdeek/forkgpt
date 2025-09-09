@@ -28,6 +28,6 @@ describe('cascade toggling', () => {
     expect(isEffectivelyIncluded(b, idx)).toBe(true)
     const disabledA = { ...a, includeInContext: false }
     const idx2 = new Map([[disabledA.id,disabledA],[b.id,b]])
-    expect(isEffectivelyIncluded(b, idx2)).toBe(false)
+    expect(isEffectivelyIncluded(b, idx2)).toBe(true)
   })
 })

@@ -43,7 +43,8 @@ export const loadSettings = (): Settings => {
 export const saveSettings = (settings: Settings) => {
   try {
     if (typeof localStorage !== 'undefined') {
-      const { apiKey: _volatileApiKey, ...rest } = settings
+      // Never persist volatile secrets or accidental password fields
+      const { apiKey: _volatileApiKey, /* @ts-ignore defensive */ password: _pwd, ...rest } = settings as any
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(rest))
     }
   } catch {}
