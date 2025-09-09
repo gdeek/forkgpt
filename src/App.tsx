@@ -140,7 +140,7 @@ const AppInner: React.FC = () => {
               <div key={m.id} className="bg-white border rounded p-3">
                 <div className="text-xs text-gray-500 mb-1">{m.role}{m.model ? ` · ${m.model}` : ''}</div>
                 <div className="whitespace-pre-wrap">{m.content || <span className="text-gray-400">…</span>}</div>
-                {!m.anchorMessageId && (
+                {!m.anchorMessageId && m.role === 'assistant' && (
                   <div className="mt-2 flex items-center gap-2">
                     <label className="text-sm flex items-center gap-1">
                       <input type="checkbox" checked={!!m.includeInContext} onChange={e=>dispatch({ type: 'updateMessage', id: m.id, patch: { includeInContext: e.target.checked } })} /> Include in context
@@ -411,14 +411,14 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
           {!collapsed.has(n.id) && (
             <>
               <div className={`mt-1 whitespace-pre-wrap ${depth >= 1 ? 'text-[13px] leading-5' : 'text-sm leading-6'}`}>{n.content || <span className='text-gray-400'>…</span>}</div>
-              <div className="mt-2 flex items-center gap-3">
-                <label className="text-xs flex items-center gap-1">
-                  <input type="checkbox" checked={!!n.includeInContext} onChange={e=>toggleInclude(n.id, e.target.checked)} /> Include in context
-                </label>
-                {n.role === 'assistant' && (
+              {n.role === 'assistant' && (
+                <div className="mt-2 flex items-center gap-3">
+                  <label className="text-xs flex items-center gap-1">
+                    <input type="checkbox" checked={!!n.includeInContext} onChange={e=>toggleInclude(n.id, e.target.checked)} /> Include in context
+                  </label>
                   <button className="text-xs px-2 py-1 border rounded" onClick={()=>setReplyParentId(n.id)}>Reply</button>
-                )}
-              </div>
+                </div>
+              )}
               <div className="mt-2 ml-3 pl-3 border-l border-gray-200 space-y-2">
                 {renderTree(n.id, depth + 1)}
               </div>

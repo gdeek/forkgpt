@@ -21,13 +21,14 @@ export const setIncludeFlag = (messages: Message[], id: string, include: boolean
 }
 
 export const isEffectivelyIncluded = (node: Message, messagesIndex: Map<string, Message>): boolean => {
+  // Node itself must be included, but user ancestors are treated as implicitly included.
   if (!node.includeInContext) return false
   let cur: Message | undefined = node
   while (cur?.parentId) {
     const p = messagesIndex.get(cur.parentId)
-    if (!p || !p.includeInContext) return false
+    if (!p) return false
+    if (p.role !== 'user' && !p.includeInContext) return false
     cur = p
   }
   return true
 }
-
