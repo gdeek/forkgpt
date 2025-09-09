@@ -85,7 +85,12 @@ const AppInner: React.FC = () => {
     }
     dispatch({ type: 'addMessage', message: assistantMsg })
 
-    const ctx = buildMainContext({ session, allMessages: [...state.messages, userMsg, assistantMsg] })
+    const ctx = buildMainContext({
+      session,
+      allMessages: [...state.messages, userMsg, assistantMsg],
+      mainTurnsLimit: session?.mainTurnsLimit,
+      maxTokens: session?.maxTokens,
+    })
     const controller = new AbortController()
     setAborter(controller)
     setIsStreaming(true)
@@ -96,6 +101,7 @@ const AppInner: React.FC = () => {
         messages: [...ctx, { role: 'user', content: userMsg.content }],
         temperature: supportsTemperature(model) ? session?.temperature : undefined,
         reasoningEffort: supportsReasoningEffort(model) ? session?.reasoningEffort : undefined,
+        maxTokens: session?.maxTokens,
         onDelta: (delta) => dispatch({ type: 'updateMessage', id: assistantMsg.id, patch: { content: (assistantMsg.content += delta) } }),
         signal: controller.signal,
       })
@@ -140,13 +146,7 @@ const AppInner: React.FC = () => {
               <div key={m.id} className="bg-white border rounded p-3">
                 <div className="text-xs text-gray-500 mb-1">{m.role}{m.model ? ` · ${m.model}` : ''}</div>
                 <div className="whitespace-pre-wrap">{m.content || <span className="text-gray-400">…</span>}</div>
-                {!m.anchorMessageId && m.role === 'assistant' && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <label className="text-sm flex items-center gap-1">
-                      <input type="checkbox" checked={!!m.includeInContext} onChange={e=>dispatch({ type: 'updateMessage', id: m.id, patch: { includeInContext: e.target.checked } })} /> Include in context
-                    </label>
-                  </div>
-                )}
+                {/* Main chat messages are always included in context now. */}
                 {m.role === 'assistant' && !m.anchorMessageId && (
                   <div className="mt-2">
                     <button className="text-sm px-2 py-1 border rounded" onClick={()=>onReply(m.id)}>Reply →</button>
@@ -156,7 +156,7 @@ const AppInner: React.FC = () => {
             ))}
           </div>
           <div className="border-t p-3 flex items-center gap-2">
-            <select className="border rounded px-2 py-1" value={model} onChange={e=>setModel(e.target.value)}>
+            <select className="border rounded px-2 py-1" value={model} onChange={e=>setModel(e.target.value as any)}>
               {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
             <textarea className="border rounded flex-1 p-2 min-h-[60px]" placeholder="Type your message" value={composer} onChange={e=>setComposer(e.target.value)} />
@@ -191,19 +191,19 @@ const AppInner: React.FC = () => {
       <button className="text-sm underline" onClick={()=>setOpen(o=>!o)}>{open ? 'Hide' : 'Show'} system settings</button>
       {open && (
         <>
-          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3 items-center">
+          <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 items-center">
             {supportsTemperature(currentModel) && (
               <label className="text-sm flex items-center gap-2">
                 <span className="whitespace-nowrap">Temperature</span>
                 <input
                   type="range"
                   min={0}
-                  max={1}
+                  max={2}
                   step={0.1}
-                  value={session.temperature ?? 0.7}
+                  value={session.temperature ?? 1}
                   onChange={e=>dispatch({ type: 'setSessionTemperature', id: session.id, temperature: Number(e.target.value) })}
                 />
-                <span className="text-xs text-gray-600 w-8">{(session.temperature ?? 0.5).toFixed(1)}</span>
+                <span className="text-xs text-gray-600 w-8">{(session.temperature ?? 1).toFixed(1)}</span>
               </label>
             )}
             {supportsReasoningEffort(currentModel) && (
@@ -220,6 +220,32 @@ const AppInner: React.FC = () => {
                 </select>
               </label>
             )}
+            <label className="text-sm flex items-center gap-2">
+              <span className="whitespace-nowrap flex items-center gap-1">
+                Main turns limit
+                <span title="Number of recent user+assistant pairs from the main chat that are ALWAYS included in context. Oldest pairs drop first when over the limit. ReplyViewer messages are included separately based on their own toggles." className="inline-flex items-center justify-center w-4 h-4 rounded-full border text-xs text-gray-600">i</span>
+              </span>
+              <input
+                type="number"
+                min={0}
+                max={10}
+                className="border rounded px-2 py-1 w-20"
+                value={session.mainTurnsLimit ?? 6}
+                onChange={e=>dispatch({ type: 'setSessionMainTurnsLimit', id: session.id, value: Math.min(10, Math.max(0, Number(e.target.value))) })}
+              />
+            </label>
+            <label className="text-sm flex items-center gap-2">
+              <span className="whitespace-nowrap">Max tokens</span>
+              <input
+                type="number"
+                min={1000}
+                max={128000}
+                step={500}
+                className="border rounded px-2 py-1 w-28"
+                value={session.maxTokens ?? 8000}
+                onChange={e=>dispatch({ type: 'setSessionMaxTokens', id: session.id, value: Math.min(128000, Math.max(1000, Number(e.target.value))) })}
+              />
+            </label>
           </div>
           <textarea className="border rounded w-full p-2 mt-2" placeholder="System prompt" value={session.systemPrompt ?? ''} onChange={e=>dispatch({ type: 'setSystemPrompt', id: session.id, prompt: e.target.value })} />
         </>
@@ -475,7 +501,14 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
     }
     dispatch({ type: 'addMessage', message: assistant })
 
-    const ctx = buildReplyContext({ session, allMessages: [...state.messages, user, assistant], anchorMessageId: anchorId, parentId: user.id })
+    const ctx = buildReplyContext({
+      session,
+      allMessages: [...state.messages, user, assistant],
+      anchorMessageId: anchorId,
+      parentId: user.id,
+      mainTurnsLimit: session?.mainTurnsLimit,
+      maxTokens: session?.maxTokens,
+    })
     const controller = new AbortController()
     setAborter(controller)
     setIsStreaming(true)
@@ -486,6 +519,7 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
         messages: [...ctx, { role: 'user', content: user.content }],
         temperature: supportsTemperature(assistant.model!) ? session?.temperature : undefined,
         reasoningEffort: supportsReasoningEffort(assistant.model!) ? session?.reasoningEffort : undefined,
+        maxTokens: session?.maxTokens,
         onDelta: (delta) => dispatch({ type: 'updateMessage', id: assistant.id, patch: { content: (assistant.content += delta) } }),
         signal: controller.signal,
       })

@@ -19,6 +19,8 @@ type Action =
   | { type: 'setSystemPrompt'; id: string; prompt: string }
   | { type: 'setSessionTemperature'; id: string; temperature: number }
   | { type: 'setSessionReasoningEffort'; id: string; effort: 'low' | 'medium' | 'high' }
+  | { type: 'setSessionMainTurnsLimit'; id: string; value: number }
+  | { type: 'setSessionMaxTokens'; id: string; value: number }
   | { type: 'addMessage'; message: Message }
   | { type: 'updateMessage'; id: string; patch: Partial<Message> }
   | { type: 'setActiveReplyAnchor'; anchorId?: string }
@@ -42,6 +44,10 @@ const reducer = (state: State, action: Action): State => {
         title: action.title ?? 'New Session',
         createdAt: Date.now(),
         lastActiveAt: Date.now(),
+        temperature: 1,
+        reasoningEffort: 'medium',
+        mainTurnsLimit: 6,
+        maxTokens: 8000,
       }
       return { ...state, sessions: [...state.sessions, s], ui: { ...state.ui, activeSessionId: s.id } }
     }
@@ -72,6 +78,14 @@ const reducer = (state: State, action: Action): State => {
     }
     case 'setSessionReasoningEffort': {
       return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, reasoningEffort: action.effort } : s)) }
+    }
+    case 'setSessionMainTurnsLimit': {
+      const val = Math.min(10, Math.max(0, action.value))
+      return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, mainTurnsLimit: val } : s)) }
+    }
+    case 'setSessionMaxTokens': {
+      const val = Math.min(128000, Math.max(0, action.value))
+      return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, maxTokens: val } : s)) }
     }
     case 'addMessage': {
       return { ...state, messages: [...state.messages, action.message] }

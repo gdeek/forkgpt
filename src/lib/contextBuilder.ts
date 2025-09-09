@@ -35,7 +35,8 @@ export const buildReplyContext = (params: BuildReplyContextParams): ChatMessage[
   const main = allMessages
     .filter(m => m.sessionId === session.id && !m.anchorMessageId)
     .sort((a, b) => a.createdAt - b.createdAt)
-  const enabledMain = main.filter(m => (m.role === 'assistant' ? m.includeInContext : true))
+  // Main chat (user + assistant) is always included; limit applied below
+  const enabledMain = main
   const limited = enabledMain.slice(-Math.max(0, mainTurnsLimit * 2))
   for (const m of limited) pushMsg(m)
 
@@ -104,7 +105,7 @@ export interface BuildMainContextParams {
 }
 
 export const buildMainContext = (params: BuildMainContextParams): ChatMessage[] => {
-  const { session, allMessages, mainTurnsLimit = 6, maxTokens = 8000 } = params
+  const { session, allMessages, mainTurnsLimit = 6, maxTokens = 32000 } = params
   const idx = indexById(allMessages)
   const out: ChatMessage[] = []
   if (session.systemPrompt) out.push({ role: 'system', content: session.systemPrompt })
@@ -138,7 +139,8 @@ export const buildMainContext = (params: BuildMainContextParams): ChatMessage[] 
   const main = allMessages
     .filter(m => m.sessionId === session.id && !m.anchorMessageId)
     .sort((a, b) => a.createdAt - b.createdAt)
-  const enabledMain = main.filter(m => m.includeInContext)
+  // Main chat (user + assistant) is always included; limit applied below
+  const enabledMain = main
   const limited = enabledMain.slice(-Math.max(0, mainTurnsLimit * 2))
   for (const m of limited) out.push({ role: m.role, content: m.content })
 

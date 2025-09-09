@@ -8,6 +8,8 @@ export interface Session {
   lastActiveAt: number
   temperature?: number
   reasoningEffort?: 'low' | 'medium' | 'high'
+  mainTurnsLimit?: number
+  maxTokens?: number
 }
 
 export interface Message {

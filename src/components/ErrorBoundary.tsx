@@ -25,4 +25,3 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren<{}>, 
     return this.props.children
   }
 }
-
