@@ -6,38 +6,53 @@ const SETTINGS_KEY = 'og.chat.settings'
 const UI_KEY = 'og.chat.ui'
 
 export const loadSessions = (): Session[] => {
-  const raw = localStorage.getItem(SESSIONS_KEY)
-  return raw ? (JSON.parse(raw) as Session[]) : []
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(SESSIONS_KEY) : null
+    return raw ? (JSON.parse(raw) as Session[]) : []
+  } catch {
+    return []
+  }
 }
 
 export const saveSessions = (sessions: Session[]) => {
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
+  try { if (typeof localStorage !== 'undefined') localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions)) } catch {}
 }
 
 export const loadMessages = (): Message[] => {
-  const raw = localStorage.getItem(MESSAGES_KEY)
-  return raw ? (JSON.parse(raw) as Message[]) : []
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(MESSAGES_KEY) : null
+    return raw ? (JSON.parse(raw) as Message[]) : []
+  } catch {
+    return []
+  }
 }
 
 export const saveMessages = (messages: Message[]) => {
-  localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages))
+  try { if (typeof localStorage !== 'undefined') localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages)) } catch {}
 }
 
 export const loadSettings = (): Settings => {
-  const raw = localStorage.getItem(SETTINGS_KEY)
-  return raw ? (JSON.parse(raw) as Settings) : {}
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(SETTINGS_KEY) : null
+    return raw ? (JSON.parse(raw) as Settings) : {}
+  } catch {
+    return {}
+  }
 }
 
 export const saveSettings = (settings: Settings) => {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+  try { if (typeof localStorage !== 'undefined') localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)) } catch {}
 }
 
 export const loadUI = (): UIState => {
-  const raw = localStorage.getItem(UI_KEY)
-  return raw ? (JSON.parse(raw) as UIState) : {}
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(UI_KEY) : null
+    return raw ? (JSON.parse(raw) as UIState) : {}
+  } catch {
+    return {}
+  }
 }
 
 export const saveUI = (ui: UIState) => {
-  localStorage.setItem(UI_KEY, JSON.stringify(ui))
+  try { if (typeof localStorage !== 'undefined') localStorage.setItem(UI_KEY, JSON.stringify(ui)) } catch {}
 }
-

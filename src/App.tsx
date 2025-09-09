@@ -5,6 +5,8 @@ import type { Message } from './types'
 import { buildMainContext, buildReplyContext } from './lib/contextBuilder'
 import { streamChatCompletion } from './lib/openaiClient'
 import { UI_MODELS, mapUiModelToApi } from './lib/models'
+import { generateSessionTitle } from './lib/titleGenerator'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 const MODELS = UI_MODELS
 
@@ -19,6 +21,7 @@ const AppInner: React.FC = () => {
 
   const session = useMemo(() => state.sessions.find(s => s.id === sessionId), [state.sessions, sessionId])
   const messages = useMemo(() => state.messages.filter(m => m.sessionId === sessionId).sort((a,b)=>a.createdAt-b.createdAt), [state.messages, sessionId])
+  const mainMessages = useMemo(() => messages.filter(m => !m.anchorMessageId), [messages])
   const anchorId = state.ui.activeReplyViewerAnchorId
 
   const createSession = () => dispatch({ type: 'createSession' })
@@ -31,6 +34,7 @@ const AppInner: React.FC = () => {
       alert('Set your OpenAI API key in Settings')
       return
     }
+    const isFirstMain = mainMessages.length === 0
     const userMsg: Message = {
       id: nanoid(),
       sessionId: session.id,
@@ -40,6 +44,7 @@ const AppInner: React.FC = () => {
       createdAt: Date.now(),
     }
     dispatch({ type: 'addMessage', message: userMsg })
+    dispatch({ type: 'touchSession', id: session.id })
     setComposer('')
 
     const assistantMsg: Message = {
@@ -71,6 +76,16 @@ const AppInner: React.FC = () => {
       setIsStreaming(false)
       setAborter(null)
     }
+
+    // Generate session title after first exchange
+    if (isFirstMain && state.settings.apiKey) {
+      try {
+        const title = await generateSessionTitle(state.settings.apiKey, userMsg.content)
+        dispatch({ type: 'renameSession', id: session.id, title })
+      } catch {
+        // ignore title errors
+      }
+    }
   }
 
   const stop = () => aborter?.abort()
@@ -81,30 +96,25 @@ const AppInner: React.FC = () => {
     <div className="h-screen flex flex-col">
       <header className="border-b bg-white px-4 py-2 flex items-center gap-2">
         <div className="font-semibold">ForkGPT</div>
-        <div className="ml-4">
-          <select className="border rounded px-2 py-1" value={sessionId} onChange={e=>selectSession(e.target.value)}>
-            {state.sessions.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-          </select>
-          <button className="ml-2 px-2 py-1 border rounded" onClick={createSession}>New Session</button>
-        </div>
         <div className="ml-auto">
           <SettingsButton />
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden">
+        <SessionSidebar />
         <main className="flex-1 flex flex-col">
           <div className="border-b p-3 bg-gray-50">
             <SystemPromptPanel />
           </div>
           <div className="flex-1 overflow-auto p-4 space-y-3">
-            {messages.map(m => (
+            {mainMessages.map(m => (
               <div key={m.id} className="bg-white border rounded p-3">
                 <div className="text-xs text-gray-500 mb-1">{m.role}{m.model ? ` · ${m.model}` : ''}</div>
                 <div className="whitespace-pre-wrap">{m.content || <span className="text-gray-400">…</span>}</div>
                 {!m.anchorMessageId && (
                   <div className="mt-2 flex items-center gap-2">
                     <label className="text-sm flex items-center gap-1">
-                      <input type="checkbox" checked={m.includeInContext} onChange={e=>dispatch({ type: 'updateMessage', id: m.id, patch: { includeInContext: e.target.checked } })} /> Include in context
+                      <input type="checkbox" checked={!!m.includeInContext} onChange={e=>dispatch({ type: 'updateMessage', id: m.id, patch: { includeInContext: e.target.checked } })} /> Include in context
                     </label>
                   </div>
                 )}
@@ -128,7 +138,9 @@ const AppInner: React.FC = () => {
             )}
           </div>
         </main>
-        <ReplyViewer />
+        <ErrorBoundary>
+          <ReplyViewer />
+        </ErrorBoundary>
       </div>
     </div>
   )
@@ -174,6 +186,58 @@ const SettingsButton: React.FC = () => {
   )
 }
 
+const SessionSidebar: React.FC = () => {
+  const { state, dispatch } = useApp()
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameVal, setRenameVal] = useState('')
+  const sessions = [...state.sessions].sort((a,b)=> (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0))
+  const activeId = state.ui.activeSessionId ?? sessions[0]?.id
+  const create = () => dispatch({ type: 'createSession' })
+  const select = (id: string) => dispatch({ type: 'selectSession', id })
+  const startRename = (id: string, current: string) => { setRenamingId(id); setRenameVal(current) }
+  const applyRename = () => {
+    if (renamingId) dispatch({ type: 'renameSession', id: renamingId, title: renameVal.trim() || 'Untitled' })
+    setRenamingId(null); setRenameVal('')
+  }
+  return (
+    <aside className="w-[260px] border-r bg-gray-50 flex flex-col">
+      <div className="p-2 border-b flex items-center justify-between">
+        <div className="text-sm font-medium">Sessions</div>
+        <button className="px-2 py-1 border rounded text-sm" onClick={create}>New</button>
+      </div>
+      <div className="flex-1 overflow-auto">
+        {sessions.map(s => (
+          <div key={s.id} className={`px-3 py-2 cursor-pointer hover:bg-gray-100 ${s.id===activeId?'bg-white border-l-4 border-black':''}`} onClick={()=>select(s.id)}>
+            {renamingId===s.id ? (
+              <div className="flex items-center gap-2">
+                <input className="border rounded px-2 py-1 flex-1" value={renameVal} onChange={e=>setRenameVal(e.target.value)} onKeyDown={e=>{ if (e.key==='Enter') applyRename() }} />
+                <button className="text-sm" onClick={applyRename}>Save</button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div className="truncate max-w-[150px]" title={s.title}>{s.title || 'Untitled'}</div>
+                <div className="flex items-center gap-2">
+                  <button className="text-xs underline" onClick={(e)=>{ e.stopPropagation(); startRename(s.id, s.title || '') }}>Rename</button>
+                  <button
+                    className="text-xs underline text-red-600"
+                    onClick={(e)=>{
+                      e.stopPropagation()
+                      const name = s.title || 'Untitled'
+                      if (confirm(`Delete session "${name}"? This will permanently remove all messages in this session.`)) {
+                        dispatch({ type: 'deleteSession', id: s.id })
+                      }
+                    }}
+                  >Delete</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </aside>
+  )
+}
+
 const ReplyViewer: React.FC = () => {
   const { state, dispatch } = useApp()
   const anchorId = state.ui.activeReplyViewerAnchorId
@@ -183,37 +247,74 @@ const ReplyViewer: React.FC = () => {
   const [replyParentId, setReplyParentId] = useState<string | undefined>(undefined)
   const [isStreaming, setIsStreaming] = useState(false)
   const [aborter, setAborter] = useState<AbortController | null>(null)
+  // Hooks must be called in a consistent order across renders.
+  // Keep this state above any conditional early returns.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   if (!anchorId || !session) return <aside className="w-0" />
   const anchor = state.messages.find(m => m.id === anchorId)
   if (!anchor) return <aside className="w-0" />
+  // If anchor belongs to a different session (stale UI state), close viewer
+  if (anchor.sessionId !== session.id) {
+    dispatch({ type: 'setActiveReplyAnchor', anchorId: undefined })
+    return <aside className="w-0" />
+  }
 
   const thread = state.messages
-    .filter(m => m.anchorMessageId === anchorId)
+    .filter(m => m.sessionId === session.id && m.anchorMessageId === anchorId)
     .sort((a, b) => a.createdAt - b.createdAt)
-  const indexById = new Map(thread.map(n => [n.id, n]))
-  const depthOf = (id?: string): number => {
-    let d = 0
-    let cur = id ? indexById.get(id) : undefined
-    while (cur?.parentId) { d++; cur = indexById.get(cur.parentId) }
-    return d
+  const byParent = new Map<string, Message[]>()
+  for (const n of thread) {
+    const key = n.parentId || '__root__'
+    const arr = byParent.get(key) || []
+    arr.push(n)
+    byParent.set(key, arr)
+  }
+  const toggleCollapse = (id: string) => setCollapsed(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+  const renderTree = (parentId?: string, depth = 0): React.ReactNode => {
+    const list = byParent.get(parentId ?? '__root__') || []
+    return list.map(n => (
+      <div key={n.id}>
+        <div className="border rounded p-2" style={{ marginLeft: depth * 12 }}>
+          <div className="flex items-center gap-2">
+            <button className="text-xs px-1 py-0.5 border rounded" onClick={()=>toggleCollapse(n.id)}>{collapsed.has(n.id) ? '+' : '−'}</button>
+            <div className="text-xs text-gray-500">{n.role}</div>
+          </div>
+          {!collapsed.has(n.id) && (
+            <>
+              <div className="mt-1 whitespace-pre-wrap">{n.content || <span className='text-gray-400'>…</span>}</div>
+              <div className="mt-2 flex items-center gap-2">
+                <label className="text-sm flex items-center gap-1">
+                  <input type="checkbox" checked={!!n.includeInContext} onChange={e=>toggleInclude(n.id, e.target.checked)} /> Include in context
+                </label>
+                <button className="text-sm px-2 py-1 border rounded" onClick={()=>setReplyParentId(n.id)}>Reply</button>
+              </div>
+              {renderTree(n.id, depth + 1)}
+            </>
+          )}
+        </div>
+      </div>
+    ))
   }
 
   const onClose = () => dispatch({ type: 'setActiveReplyAnchor', anchorId: undefined })
 
   const toggleInclude = (id: string, next: boolean) => {
-    // cascade logic will be done minimally here: if disabling, disable descendants too
-    // simple pass: do multiple updates; for MVP acceptable
-    const all = state.messages.filter(m => m.sessionId === session.id)
-    const children = all.filter(m => m.parentId === id || m.id === id)
+    // operate only on this branch's messages to avoid cross-anchor changes
+    const branchMessages = state.messages.filter(m => m.sessionId === session.id && m.anchorMessageId === anchorId)
     if (!next) {
-      // disable node and descendants
+      // disable node and descendants within this branch
+      // build descendant set
       const queue = [id]
       const toDisable = new Set<string>()
       while (queue.length) {
         const cur = queue.shift()!
         toDisable.add(cur)
-        for (const m of all) if (m.parentId === cur) queue.push(m.id)
+        for (const child of branchMessages) if (child.parentId === cur) queue.push(child.id)
       }
       for (const d of toDisable) dispatch({ type: 'updateMessage', id: d, patch: { includeInContext: false } })
     } else {
@@ -261,24 +362,11 @@ const ReplyViewer: React.FC = () => {
       <div className="p-3 border-b flex items-center justify-between">
         <div>
           <div className="text-xs text-gray-500">Replying to</div>
-          <div className="text-sm line-clamp-1 max-w-[320px]" title={anchor.content}>{anchor.content}</div>
+          <div className="text-sm truncate max-w-[320px]" title={anchor.content}>{anchor.content}</div>
         </div>
         <button className="px-2 py-1 border rounded" onClick={onClose}>Close</button>
       </div>
-      <div className="flex-1 overflow-auto p-3 space-y-2">
-        {thread.map(n => (
-          <div key={n.id} className="border rounded p-2" style={{ marginLeft: depthOf(n.id) * 12 }}>
-            <div className="text-xs text-gray-500 mb-1">{n.role}</div>
-            <div className="whitespace-pre-wrap">{n.content || <span className='text-gray-400'>…</span>}</div>
-            <div className="mt-2 flex items-center gap-2">
-              <label className="text-sm flex items-center gap-1">
-                <input type="checkbox" checked={n.includeInContext} onChange={e=>toggleInclude(n.id, e.target.checked)} /> Include in context
-              </label>
-              <button className="text-sm px-2 py-1 border rounded" onClick={()=>setReplyParentId(n.id)}>Reply</button>
-            </div>
-          </div>
-        ))}
-      </div>
+      <div className="flex-1 overflow-auto p-3 space-y-2">{renderTree(undefined, 0)}</div>
       <div className="border-t p-3 flex items-center gap-2">
         {replyParentId && (
           <div className="text-xs text-gray-600">Replying to node {replyParentId.slice(0,6)} <button className="underline" onClick={()=>setReplyParentId(undefined)}>clear</button></div>

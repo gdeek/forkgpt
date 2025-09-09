@@ -9,13 +9,12 @@ export const UI_MODELS: { id: UiModelId; label: string }[] = [
 export const mapUiModelToApi = (id: UiModelId | string): string => {
   switch (id) {
     case 'gpt-40':
-      return 'gpt-4o-search-preview'
+      return 'gpt-4o'
     case 'gpt-5':
-      return 'gpt-5'
+      return 'gpt-4o-mini'
     case 'o3':
       return 'o3'
     default:
       return id
   }
 }
-

@@ -1,7 +1,6 @@
-import type { Config } from 'jest'
-
-const config: Config = {
-  testEnvironment: 'jsdom',
+/** @type {import('jest').Config} */
+const config = {
+  testEnvironment: 'node',
   transform: {
     '^.+\\.(t|j)sx?$': ['ts-jest', { tsconfig: 'tsconfig.json' }],
   },
@@ -10,5 +9,4 @@ const config: Config = {
   collectCoverageFrom: ['src/lib/**/*.{ts,tsx}'],
 }
 
-export default config
-
+module.exports = config

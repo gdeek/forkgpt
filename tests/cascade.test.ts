@@ -31,4 +31,3 @@ describe('cascade toggling', () => {
     expect(isEffectivelyIncluded(b, idx2)).toBe(false)
   })
 })
-

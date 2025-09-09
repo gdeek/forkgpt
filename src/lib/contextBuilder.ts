@@ -41,7 +41,7 @@ export const buildReplyContext = (params: BuildReplyContextParams): ChatMessage[
 
   // reply branch: include enabled chain up to parentId
   const branchNodes = allMessages
-    .filter(m => m.anchorMessageId === anchorMessageId)
+    .filter(m => m.sessionId === session.id && m.anchorMessageId === anchorMessageId)
     .sort((a, b) => a.createdAt - b.createdAt)
 
   const effective = branchNodes.filter(n => isEffectivelyIncluded(n, idx))
@@ -90,9 +90,8 @@ export const buildMainContext = (params: BuildMainContextParams): ChatMessage[] 
     .filter(m => m.sessionId === session.id && m.role === 'assistant' && !m.parentId && !m.anchorMessageId)
     .sort((a, b) => a.createdAt - b.createdAt)
 
-  const branchRoots = new Set(anchors.map(a => a.id))
   const branchesByAnchor = new Map<string, Message[]>()
-  for (const m of allMessages.filter(m => m.anchorMessageId)) {
+  for (const m of allMessages.filter(m => m.sessionId === session.id && m.anchorMessageId)) {
     const arr = branchesByAnchor.get(m.anchorMessageId!) || []
     arr.push(m)
     branchesByAnchor.set(m.anchorMessageId!, arr)
@@ -120,10 +119,15 @@ export const buildMainContext = (params: BuildMainContextParams): ChatMessage[] 
   for (const m of limited) out.push({ role: m.role, content: m.content })
 
   // trim: branch-first then main
-  const branchCount = out.length - limited.length - (session.systemPrompt ? 1 : 0)
+  let branchCount = out.length - limited.length - (session.systemPrompt ? 1 : 0)
   while (out.length && countMessagesTokens(out) > maxTokens && branchCount > 0) {
     const sysOffset = session.systemPrompt ? 1 : 0
-    out.splice(sysOffset, 1) // drop oldest branch node
+    if (out.length > sysOffset) {
+      out.splice(sysOffset, 1) // drop oldest branch node
+      branchCount--
+    } else {
+      break
+    }
   }
   let mainCount = limited.length
   while (out.length && countMessagesTokens(out) > maxTokens && mainCount > 0) {
@@ -134,4 +138,3 @@ export const buildMainContext = (params: BuildMainContextParams): ChatMessage[] 
 
   return out
 }
-

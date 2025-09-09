@@ -29,4 +29,3 @@ describe('context builder', () => {
     expect(roles).toContain('assistant')
   })
 })
-

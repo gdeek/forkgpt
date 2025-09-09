@@ -1,4 +1,4 @@
 .yarn
-.node_modules
+node_modules/
 .pnp.cjs
 .pnp.loader.mjs

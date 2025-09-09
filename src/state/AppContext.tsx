@@ -14,6 +14,7 @@ type Action =
   | { type: 'createSession'; title?: string }
   | { type: 'selectSession'; id: string }
   | { type: 'renameSession'; id: string; title: string }
+  | { type: 'deleteSession'; id: string }
   | { type: 'touchSession'; id: string }
   | { type: 'setSystemPrompt'; id: string; prompt: string }
   | { type: 'addMessage'; message: Message }
@@ -42,10 +43,20 @@ const reducer = (state: State, action: Action): State => {
       return { ...state, sessions: [...state.sessions, s], ui: { ...state.ui, activeSessionId: s.id } }
     }
     case 'selectSession': {
-      return { ...state, ui: { ...state.ui, activeSessionId: action.id } }
+      return { ...state, ui: { ...state.ui, activeSessionId: action.id, activeReplyViewerAnchorId: undefined } }
     }
     case 'renameSession': {
       return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, title: action.title } : s)) }
+    }
+    case 'deleteSession': {
+      const sessions = state.sessions.filter(s => s.id !== action.id)
+      const messages = state.messages.filter(m => m.sessionId !== action.id)
+      const nextActiveId = state.ui.activeSessionId === action.id ? sessions[0]?.id : state.ui.activeSessionId
+      // If the active reply anchor belongs to the deleted session, clear it
+      const anchor = state.ui.activeReplyViewerAnchorId
+      const anchorMsg = anchor ? state.messages.find(m => m.id === anchor) : undefined
+      const nextAnchor = anchorMsg && anchorMsg.sessionId === action.id ? undefined : anchor
+      return { ...state, sessions, messages, ui: { ...state.ui, activeSessionId: nextActiveId, activeReplyViewerAnchorId: nextAnchor } }
     }
     case 'touchSession': {
       return { ...state, sessions: state.sessions.map(s => (s.id === action.id ? { ...s, lastActiveAt: Date.now() } : s)) }
