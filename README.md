@@ -3,7 +3,7 @@
 A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a right‑side Reply Viewer where you can branch, nest, and curate which answers should count as context for future messages. Follow multiple what‑ifs without wrecking your main thread.
 
 ## What It Is
-- A local‑first (too lazy to add persistence - coming soon), browser‑based chat UI for exploring ideas.
+- A local‑first (too lazy to add persistence - coming soon), browser‑based chat UI for exploring ideas and questions - to any depths.
 - Branch replies on the right, keep your main chat tidy on the left.
 - Decide which assistant answers influence future responses with an “Include in context” toggle (assistant messages only). Disabling a parent cascades to its children.
 
