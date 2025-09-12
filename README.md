@@ -1,6 +1,6 @@
 # ForkGPT
 
-A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a right‑side Reply Viewer where you can branch, nest, and curate which answers should count as context for future messages. Follow multiple what‑ifs without wrecking your main thread.
+A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a right‑side Reply Viewer where you can follow multiple what‑ifs without wrecking your main thread. And allows you to branch, nest, and curate which answers should count as context for future messages. 
 
 ## What It Is
 - A local‑first (too lazy to add persistence - coming soon), browser‑based chat UI for exploring ideas and questions - to any depths.
@@ -30,10 +30,10 @@ A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a r
 
 ## Roadmap
 - Claude model integration
-- Image uploads
 - Optional context preview before sending
 - Better token budgeting with a real tokenizer
-- Keyboard navigation in the Reply Viewer (Enter to reply etc)
+- Export and Import Sessions (including replies) 
+- Replace localStorage with IndexedDB
 
 ## Getting Started
 1. Install deps
