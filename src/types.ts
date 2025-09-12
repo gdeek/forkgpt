@@ -22,6 +22,7 @@ export interface Message {
   anchorMessageId?: string
   includeInContext: boolean
   createdAt: number
+  attachments?: AttachmentMeta[]
 }
 
 export interface Settings {
@@ -35,4 +36,16 @@ export interface UIState {
   activeReplyViewerAnchorId?: string
   replyViewerWidth?: number
   theme?: 'light' | 'dark'
+}
+
+export type AttachmentKind = 'image' | 'pdf' | 'text' | 'other'
+
+export interface AttachmentMeta {
+  readonly id: string
+  readonly name: string
+  readonly size: number
+  readonly mime: string
+  readonly kind: AttachmentKind
+  readonly blobKey: string
+  previewDataUrl?: string
 }

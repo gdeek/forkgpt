@@ -34,3 +34,10 @@ export const supportsTemperature = (model: string): boolean => {
   // Only standard models like gpt-4o support temperature
   return !apiModel.startsWith('o1') && !apiModel.startsWith('o3') && apiModel !== 'gpt-5'
 }
+
+// Helper for multimodal image support
+export const supportsImages = (model: string): boolean => {
+  const apiModel = mapUiModelToApi(model)
+  // Per user decision, gpt-4o, gpt-5 and o3 all support images
+  return apiModel === 'gpt-4o' || apiModel === 'gpt-5' || apiModel.startsWith('o3')
+}

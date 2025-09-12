@@ -4,10 +4,13 @@ import { nanoid } from 'nanoid'
 import type { Message } from './types'
 import { buildMainContext, buildReplyContext } from './lib/contextBuilder'
 import { streamChatCompletion } from './lib/openaiClient'
-import { UI_MODELS, mapUiModelToApi, supportsReasoningEffort, supportsTemperature } from './lib/models'
+import { UI_MODELS, mapUiModelToApi, supportsReasoningEffort, supportsTemperature, supportsImages } from './lib/models'
 import { generateSessionTitle } from './lib/titleGenerator'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { encryptString, decryptString } from './lib/crypto'
+import { AttachmentPicker } from './components/AttachmentPicker'
+import { MAX_ATTACHMENTS, MAX_TOTAL_BYTES, storeNewAttachment, prepareAttachmentParts, LARGE_FILE_SUMMARY_THRESHOLD, sniffKind } from './lib/attachments'
+import type { AttachmentMeta } from './types'
 
 const MODELS = UI_MODELS
 
@@ -23,6 +26,7 @@ const AppInner: React.FC = () => {
   const [model, setModel] = useState(MODELS[0].id)
   const [isStreaming, setIsStreaming] = useState(false)
   const [aborter, setAborter] = useState<AbortController | null>(null)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const [isResizing, setIsResizing] = useState(false)
   const [rvWidth, setRvWidth] = useState<number>(state.ui.replyViewerWidth ?? 420)
@@ -75,6 +79,10 @@ const AppInner: React.FC = () => {
       alert('Set your OpenAI API key in Settings')
       return
     }
+    // Limits
+    if (pendingFiles.length > MAX_ATTACHMENTS) { alert(`Max ${MAX_ATTACHMENTS} attachments per message`); return }
+    const totalBytes = pendingFiles.reduce((a,b)=>a+b.size,0)
+    if (totalBytes > MAX_TOTAL_BYTES) { alert('Total attachments must be ≤ 50MB'); return }
     const isFirstMain = mainMessages.length === 0
     const userMsg: Message = {
       id: nanoid(),
@@ -84,9 +92,15 @@ const AppInner: React.FC = () => {
       includeInContext: true,
       createdAt: Date.now(),
     }
+    // Persist attachments to IDB and add metadata
+    const metas: AttachmentMeta[] = []
+    for (const f of pendingFiles) metas.push(await storeNewAttachment(userMsg.id, f))
+    userMsg.attachments = metas
+
     dispatch({ type: 'addMessage', message: userMsg })
     dispatch({ type: 'touchSession', id: session.id })
     setComposer('')
+    setPendingFiles([])
 
     const assistantMsg: Message = {
       id: nanoid(),
@@ -109,10 +123,37 @@ const AppInner: React.FC = () => {
     setAborter(controller)
     setIsStreaming(true)
     try {
+      // Optional 2-pass: summarize large text/PDF files (>25MB)
+      const largeMetas = (userMsg.attachments ?? []).filter(m => (m.size > LARGE_FILE_SUMMARY_THRESHOLD) && (m.kind === 'text' || m.kind === 'pdf'))
+      if (largeMetas.length) {
+        const largeParts: any[] = []
+        for (const m of largeMetas) largeParts.push(...await prepareAttachmentParts(userMsg.id, m))
+        const summaryPrompt = { type: 'text', text: 'Summarize the following file(s) concisely (≤ 800 tokens), preserving structure, key entities, numbers, and code blocks where relevant. Output only the summary.' }
+        await streamChatCompletion({
+          apiKey: state.settings.apiKey!,
+          model: mapUiModelToApi(model),
+          messages: [...ctx, { role: 'user', content: [summaryPrompt, ...largeParts] }],
+          temperature: supportsTemperature(model) ? session?.temperature : undefined,
+          reasoningEffort: supportsReasoningEffort(model) ? session?.reasoningEffort : undefined,
+          maxTokens: Math.min(1000, session?.maxTokens ?? 4000),
+          onDelta: (delta) => {/* swallow - we will use summary only internally */},
+          signal: controller.signal,
+        })
+        // Note: We are not streaming summary text to UI to keep UX clean.
+      }
+
+      // Build user parts: file text chunks first, then images, then the question text
+      const parts: any[] = []
+      const textFirst: AttachmentMeta[] = (userMsg.attachments ?? []).filter(a=>a.kind==='text' || a.kind==='pdf')
+      for (const m of textFirst) parts.push(...await prepareAttachmentParts(userMsg.id, m))
+      const imageMetas = (userMsg.attachments ?? []).filter(a=>a.kind==='image' && supportsImages(model))
+      for (const m of imageMetas) parts.push(...await prepareAttachmentParts(userMsg.id, m))
+      parts.push({ type: 'text', text: userMsg.content })
+
       await streamChatCompletion({
         apiKey: state.settings.apiKey!,
         model: mapUiModelToApi(model),
-        messages: [...ctx, { role: 'user', content: userMsg.content }],
+        messages: [...ctx, { role: 'user', content: parts }],
         temperature: supportsTemperature(model) ? session?.temperature : undefined,
         reasoningEffort: supportsReasoningEffort(model) ? session?.reasoningEffort : undefined,
         maxTokens: session?.maxTokens,
@@ -177,12 +218,25 @@ const AppInner: React.FC = () => {
             )}
           </div>
           {hasSession && (
-            <div className="border-t dark:border-gray-700 bg-white dark:bg-gray-900 p-3 flex items-center gap-2">
-              <select className="border rounded px-2 py-1 bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700" value={model} onChange={e=>setModel(e.target.value as any)}>
-                {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </select>
+            <div className="border-t dark:border-gray-700 bg-white dark:bg-gray-900 p-3 flex flex-col gap-2">
+              <div className="flex items-start gap-2">
+                <select className="border rounded px-2 py-1 bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700" value={model} onChange={e=>setModel(e.target.value as any)}>
+                  {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                </select>
+                <div className="flex-1">
+                  <AttachmentPicker compact pending={pendingFiles} metas={[]} onSelectFiles={(files)=>{
+                    const arr = Array.from(files as any).filter(f=> sniffKind(f.type, f.name) !== 'other')
+                    if (arr.length !== (files as any).length) alert('Some files were skipped because their type is not supported for context.')
+                    const merged = [...pendingFiles, ...arr]
+                    const total = merged.reduce((a,b)=>a+b.size,0)
+                    if (merged.length > MAX_ATTACHMENTS) { alert(`Max ${MAX_ATTACHMENTS} attachments per message`); return }
+                    if (total > MAX_TOTAL_BYTES) { alert('Total attachments must be ≤ 50MB'); return }
+                    setPendingFiles(merged)
+                  }} onRemovePending={(i)=> setPendingFiles(prev=>prev.filter((_,idx)=>idx!==i))} />
+                </div>
+              </div>
               <textarea
-                className="border rounded flex-1 p-2 min-h-[60px] bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700"
+                className="border rounded flex-1 p-2 min-h-[60px] bg-white dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
                 placeholder="Type your message"
                 value={composer}
                 onChange={e=>setComposer(e.target.value)}
@@ -193,11 +247,13 @@ const AppInner: React.FC = () => {
                   }
                 }}
               />
-              {!isStreaming ? (
-                <button className="px-3 py-2 bg-black text-white rounded" onClick={onSendMain}>Send</button>
-              ) : (
-                <button className="px-3 py-2 bg-red-600 text-white rounded" onClick={stop}>Stop</button>
-              )}
+              <div className="flex items-center gap-2">
+                {!isStreaming ? (
+                  <button className="px-3 py-2 bg-black text-white rounded" onClick={onSendMain}>Send</button>
+                ) : (
+                  <button className="px-3 py-2 bg-red-600 text-white rounded" onClick={stop}>Stop</button>
+                )}
+              </div>
             </div>
           )}
         </main>
@@ -469,6 +525,7 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
   const sessionId = state.ui.activeSessionId ?? state.sessions[0]?.id
   const session = state.sessions.find(s => s.id === sessionId)
   const [replyText, setReplyText] = useState('')
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [replyParentId, setReplyParentId] = useState<string | undefined>(undefined)
   const [isStreaming, setIsStreaming] = useState(false)
   const [aborter, setAborter] = useState<AbortController | null>(null)
@@ -580,8 +637,17 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
     const user = {
       id: nanoid(), sessionId: session.id, role: 'user' as const, content: replyText, includeInContext: false, createdAt: Date.now(), anchorMessageId: anchorId, parentId,
     }
+    // Attachments for reply (same limits)
+    if (pendingFiles.length > MAX_ATTACHMENTS) { alert(`Max ${MAX_ATTACHMENTS} attachments per message`); return }
+    const totalBytes = pendingFiles.reduce((a,b)=>a+b.size,0)
+    if (totalBytes > MAX_TOTAL_BYTES) { alert('Total attachments must be ≤ 50MB'); return }
+    // Persist attachments to IDB
+    const metas: AttachmentMeta[] = []
+    for (const f of pendingFiles) metas.push(await storeNewAttachment(user.id, f))
+    user.attachments = metas
     dispatch({ type: 'addMessage', message: user })
     setReplyText('')
+    setPendingFiles([])
     const assistant: Message = {
       id: nanoid(), sessionId: session.id, role: 'assistant', content: '', includeInContext: false, createdAt: Date.now(), anchorMessageId: anchorId, parentId: user.id, model: anchor.model ?? 'gpt-4o',
     }
@@ -599,10 +665,35 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
     setAborter(controller)
     setIsStreaming(true)
     try {
+      // 2-pass summarize for large files in replies
+      const largeMetas = (user.attachments ?? []).filter(m => (m.size > LARGE_FILE_SUMMARY_THRESHOLD) && (m.kind === 'text' || m.kind === 'pdf'))
+      if (largeMetas.length) {
+        const largeParts: any[] = []
+        for (const m of largeMetas) largeParts.push(...await prepareAttachmentParts(user.id, m))
+        const summaryPrompt = { type: 'text', text: 'Summarize the following file(s) concisely (≤ 800 tokens), preserving structure, key entities, numbers, and code blocks where relevant. Output only the summary.' }
+        await streamChatCompletion({
+          apiKey: state.settings.apiKey!,
+          model: mapUiModelToApi(assistant.model!),
+          messages: [...ctx, { role: 'user', content: [summaryPrompt, ...largeParts] }],
+          temperature: supportsTemperature(assistant.model!) ? session?.temperature : undefined,
+          reasoningEffort: supportsReasoningEffort(assistant.model!) ? session?.reasoningEffort : undefined,
+          maxTokens: Math.min(1000, session?.maxTokens ?? 4000),
+          onDelta: ()=>{},
+          signal: controller.signal,
+        })
+      }
+      // Build user parts (text/pdf first, then images, then message text)
+      const parts: any[] = []
+      const textFirst: AttachmentMeta[] = (user.attachments ?? []).filter(a=>a.kind==='text' || a.kind==='pdf')
+      for (const m of textFirst) parts.push(...await prepareAttachmentParts(user.id, m))
+      const imageMetas = (user.attachments ?? []).filter(a=>a.kind==='image' && supportsImages(assistant.model || ''))
+      for (const m of imageMetas) parts.push(...await prepareAttachmentParts(user.id, m))
+      parts.push({ type: 'text', text: user.content })
+
       await streamChatCompletion({
         apiKey: state.settings.apiKey!,
         model: mapUiModelToApi(assistant.model!),
-        messages: [...ctx, { role: 'user', content: user.content }],
+        messages: [...ctx, { role: 'user', content: parts }],
         temperature: supportsTemperature(assistant.model!) ? session?.temperature : undefined,
         reasoningEffort: supportsReasoningEffort(assistant.model!) ? session?.reasoningEffort : undefined,
         maxTokens: session?.maxTokens,
@@ -637,7 +728,7 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
           return content
         })()}
       </div>
-      <div className="border-t dark:border-gray-700 bg-white dark:bg-gray-900 p-3 flex items-center gap-2">
+      <div className="border-t dark:border-gray-700 bg-white dark:bg-gray-900 p-3 flex flex-col gap-2">
         {replyParentId && (
           <div className="text-xs text-gray-600 flex items-center gap-1">
             <span>Replying to</span>
@@ -647,8 +738,17 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
             <button className="underline" onClick={()=>setReplyParentId(undefined)}>clear</button>
           </div>
         )}
+        <AttachmentPicker compact pending={pendingFiles} metas={[]} onSelectFiles={(files)=>{
+          const arr = Array.from(files as any).filter(f=> sniffKind(f.type, f.name) !== 'other')
+          if (arr.length !== (files as any).length) alert('Some files were skipped because their type is not supported for context.')
+          const merged = [...pendingFiles, ...arr]
+          const total = merged.reduce((a,b)=>a+b.size,0)
+          if (merged.length > MAX_ATTACHMENTS) { alert(`Max ${MAX_ATTACHMENTS} attachments per message`); return }
+          if (total > MAX_TOTAL_BYTES) { alert('Total attachments must be ≤ 50MB'); return }
+          setPendingFiles(merged)
+        }} onRemovePending={(i)=> setPendingFiles(prev=>prev.filter((_,idx)=>idx!==i))} />
         <textarea
-          className="border rounded flex-1 p-2 min-h-[60px]"
+          className="border rounded flex-1 p-2 min-h-[60px] bg-white dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
           placeholder="Type a reply"
           value={replyText}
           onChange={e=>setReplyText(e.target.value)}
@@ -659,11 +759,13 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
             }
           }}
         />
-        {!isStreaming ? (
-          <button className="px-3 py-2 bg-black text-white rounded" onClick={()=>onSendReply(replyParentId)}>Send</button>
-        ) : (
-          <button className="px-3 py-2 bg-red-600 text-white rounded" onClick={stop}>Stop</button>
-        )}
+        <div className="flex items-center gap-2">
+          {!isStreaming ? (
+            <button className="px-3 py-2 bg-black text-white rounded inline-flex" onClick={()=>onSendReply(replyParentId)}>Send</button>
+          ) : (
+            <button className="px-3 py-2 bg-red-600 text-white rounded inline-flex" onClick={stop}>Stop</button>
+          )}
+        </div>
       </div>
     </aside>
   )

@@ -1,10 +1,11 @@
 import type { Message, Session } from '../types'
 import { indexById } from './messageGraph'
 import { isEffectivelyIncluded } from './cascade'
+import type { ContentPart } from './attachments'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
-  content: string
+  content: string | ContentPart[]
 }
 
 const approxTokenCount = (text: string): number => {
@@ -12,7 +13,13 @@ const approxTokenCount = (text: string): number => {
   return Math.ceil(text.length / 4)
 }
 
-const countMessagesTokens = (msgs: ChatMessage[]): number => msgs.reduce((acc, m) => acc + approxTokenCount(m.content), 0)
+const countMessagesTokens = (msgs: ChatMessage[]): number => msgs.reduce((acc, m) => {
+  if (typeof m.content === 'string') return acc + approxTokenCount(m.content)
+  // Sum only text parts
+  let sum = 0
+  for (const p of m.content) if (p.type === 'text') sum += approxTokenCount(p.text)
+  return acc + sum
+}, 0)
 
 export interface BuildReplyContextParams {
   session: Session
@@ -93,6 +100,7 @@ export const buildReplyContext = (params: BuildReplyContextParams): ChatMessage[
 // Helper to map ChatMessage to original Message id by matching in-order content+role reference list.
 // This is best-effort to support trimming logic without carrying ids in ChatMessage.
 const effectiveMessageIdOf = (msg: ChatMessage, ordered: Message[]): string => {
+  if (typeof msg.content !== 'string') return ''
   const found = ordered.find(m => m.role === msg.role && m.content === msg.content)
   return found ? found.id : ''
 }
