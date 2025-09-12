@@ -42,7 +42,16 @@ export const compressImage = async (file: File): Promise<Blob> => {
 let pdfjsPromise: Promise<any> | null = null
 const loadPdfjs = () => {
   if (!pdfjsPromise) {
-    pdfjsPromise = import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.mjs')
+    const base = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build'
+    pdfjsPromise = import(`${base}/pdf.mjs`).then((mod: any) => {
+      try {
+        // Tell PDF.js where to load the worker from (required in many envs)
+        if (mod && mod.GlobalWorkerOptions) {
+          mod.GlobalWorkerOptions.workerSrc = `${base}/pdf.worker.min.mjs`
+        }
+      } catch {}
+      return mod
+    })
   }
   return pdfjsPromise
 }
