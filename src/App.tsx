@@ -591,7 +591,15 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
               {n.role === 'assistant' && (
                 <div className="mt-2 flex items-center gap-3">
                   <label className="text-xs flex items-center gap-1">
-                    <input type="checkbox" checked={!!n.includeInContext} onChange={e=>toggleInclude(n.id, e.target.checked)} /> Include in context
+                    <input
+                      type="checkbox"
+                      checked={!!n.includeInContext}
+                      onClick={(e)=>{
+                        const target = e.currentTarget as HTMLInputElement
+                        toggleInclude(n.id, target.checked, e as any)
+                      }}
+                    />
+                    <span className="flex items-center gap-1">Include in context</span>
                   </label>
                   <button className="text-xs px-2 py-1 border rounded" onClick={()=>setReplyParentId(n.id)}>Reply</button>
                 </div>
@@ -608,23 +616,31 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
 
   const onClose = () => dispatch({ type: 'setActiveReplyAnchor', anchorId: undefined })
 
-  const toggleInclude = (id: string, next: boolean) => {
+  const toggleInclude = (id: string, next: boolean, ev?: MouseEvent) => {
     // operate only on this branch's messages to avoid cross-anchor changes
     const branchMessages = state.messages.filter(m => m.sessionId === session.id && m.anchorMessageId === anchorId)
-    if (!next) {
-      // disable node and descendants within this branch
-      // build descendant set
-      const queue = [id]
-      const toDisable = new Set<string>()
-      while (queue.length) {
-        const cur = queue.shift()!
-        toDisable.add(cur)
-        for (const child of branchMessages) if (child.parentId === cur) queue.push(child.id)
-      }
-      for (const d of toDisable) dispatch({ type: 'updateMessage', id: d, patch: { includeInContext: false } })
-    } else {
-      dispatch({ type: 'updateMessage', id, patch: { includeInContext: true } })
+    const optionOnly = !!(ev && (ev as any).altKey)
+    if (optionOnly) {
+      dispatch({ type: 'updateMessage', id, patch: { includeInContext: next } })
+      return
     }
+    // BFS through descendants (max depth 25) and toggle the entire subtree
+    const ids: string[] = []
+    const byParent = new Map<string, string[]>()
+    for (const m of branchMessages) {
+      if (!m.parentId) continue
+      const arr = byParent.get(m.parentId) || []
+      arr.push(m.id)
+      byParent.set(m.parentId, arr)
+    }
+    const q: Array<{ id: string; d: number }> = [{ id, d: 0 }]
+    while (q.length) {
+      const { id: cur, d } = q.shift()!
+      ids.push(cur)
+      if (d >= 25) continue
+      for (const childId of byParent.get(cur) || []) q.push({ id: childId, d: d + 1 })
+    }
+    dispatch({ type: 'setIncludeInContextBulk', ids, include: next })
   }
 
   const onSendReply = async (parentId?: string) => {
@@ -724,7 +740,14 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
     <aside className="border-l dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col" style={{ width }}>
       <div className="p-3 border-b dark:border-gray-700 bg-white dark:bg-gray-900 flex items-center justify-between">
         <div>
-          <div className="text-xs text-gray-500">Replying to</div>
+          <div className="text-xs text-gray-500 flex items-center gap-2">
+            <span>Replying to</span>
+            <span
+              title="'Include in context' click toggles the entire reply subtree of a message. Option/Alt-click toggles only that message."
+              className="inline-flex items-center justify-center w-3 h-3 rounded-full border text-[10px] leading-none text-gray-600 align-middle"
+              aria-label="Include in context behavior"
+            >i</span>
+          </div>
           <div className="text-sm" title={anchor.content}>{truncateText(anchor.content, 20)}</div>
         </div>
         <button className="px-2 py-1 border rounded" onClick={onClose}>Close</button>

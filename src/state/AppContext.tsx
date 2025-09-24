@@ -23,6 +23,7 @@ type Action =
   | { type: 'setSessionMaxTokens'; id: string; value: number }
   | { type: 'addMessage'; message: Message }
   | { type: 'updateMessage'; id: string; patch: Partial<Message> }
+  | { type: 'setIncludeInContextBulk'; ids: string[]; include: boolean }
   | { type: 'setActiveReplyAnchor'; anchorId?: string }
   | { type: 'setSettings'; settings: Partial<Settings> }
   | { type: 'setReplyViewerWidth'; width: number }
@@ -94,6 +95,10 @@ const reducer = (state: State, action: Action): State => {
     }
     case 'updateMessage': {
       return { ...state, messages: state.messages.map(m => (m.id === action.id ? { ...m, ...action.patch } : m)) }
+    }
+    case 'setIncludeInContextBulk': {
+      const set = new Set(action.ids)
+      return { ...state, messages: state.messages.map(m => (set.has(m.id) ? { ...m, includeInContext: action.include } : m)) }
     }
     case 'setActiveReplyAnchor': {
       return { ...state, ui: { ...state.ui, activeReplyViewerAnchorId: action.anchorId } }

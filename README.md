@@ -3,9 +3,9 @@
 A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a right‑side Reply Viewer where you can follow multiple what‑ifs without wrecking your main thread. And allows you to branch, nest, and curate which answers should count as context for future messages. 
 
 ## What It Is
-- A local‑first (too lazy to add persistence - coming soon), browser‑based chat UI for exploring ideas and questions - to any depths.
+- A local‑first, browser‑based chat UI for exploring ideas and questions - to any depths.
 - Branch replies on the right, keep your main chat tidy on the left.
-- Decide which assistant answers influence future responses with an “Include in context” toggle (assistant messages only). Disabling a parent cascades to its children.
+- Decide which assistant answers influence future responses with an “Include in context” toggle (assistant messages only).
 
 ## Why You’ll Like It
 - Compare alternate answers side‑by‑side, keep only the good stuff in memory.
@@ -15,10 +15,11 @@ A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a r
 ## Highlights
 - Reply Viewer: clean nesting, collapsible nodes, subtle indent guides.
 - Resizable panel: drag the thin divider; we remember your width.
-- Session settings: temperature slider and reasoning effort for `gpt-5` (`low` | `medium` | `high`).
+- Session settings: temperature slider and reasoning effort for `gpt-5` and `o3` (`low` | `medium` | `high`) reasoning models.
 - Local persistence: your sessions live in your browser profile.
 - Safer keys: encrypt your API key at rest with a password; unlock per reload. The key stays in memory only after you unlock.
 - Streams by default, with a Stop button when you need it.
+- Supports Web Search, Attachments (including images and PDFs).
 
 ## Privacy & Security
 - Where data lives: `localStorage` for chat data (per‑origin, per‑profile).
@@ -46,4 +47,4 @@ A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a r
 
 3. Open http://localhost:5173
 
-4. Click Settings to add your OpenAI API key. Optionally set a password to encrypt it at rest.
+4. Click Settings to add your OpenAI API key. Set a strong password to encrypt it at rest.
