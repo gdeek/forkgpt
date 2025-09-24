@@ -3,7 +3,7 @@ import { AppProvider, useApp } from './state/AppContext'
 import { nanoid } from 'nanoid'
 import type { Message } from './types'
 import { buildMainContext, buildReplyContext } from './lib/contextBuilder'
-import { streamChatCompletion } from './lib/openaiClient'
+import { streamResponse } from './lib/openaiClient'
 import { UI_MODELS, mapUiModelToApi, supportsReasoningEffort, supportsTemperature, supportsImages } from './lib/models'
 import { generateSessionTitle } from './lib/titleGenerator'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -27,6 +27,7 @@ const AppInner: React.FC = () => {
   const [isStreaming, setIsStreaming] = useState(false)
   const [aborter, setAborter] = useState<AbortController | null>(null)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [webSearch, setWebSearch] = useState(false)
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const [isResizing, setIsResizing] = useState(false)
   const [rvWidth, setRvWidth] = useState<number>(state.ui.replyViewerWidth ?? 420)
@@ -129,13 +130,14 @@ const AppInner: React.FC = () => {
         const largeParts: any[] = []
         for (const m of largeMetas) largeParts.push(...await prepareAttachmentParts(userMsg.id, m))
         const summaryPrompt = { type: 'text', text: 'Summarize the following file(s) concisely (≤ 800 tokens), preserving structure, key entities, numbers, and code blocks where relevant. Output only the summary.' }
-        await streamChatCompletion({
+        await streamResponse({
           apiKey: state.settings.apiKey!,
           model: mapUiModelToApi(model),
           messages: [...ctx, { role: 'user', content: [summaryPrompt, ...largeParts] }],
           temperature: supportsTemperature(model) ? session?.temperature : undefined,
           reasoningEffort: supportsReasoningEffort(model) ? session?.reasoningEffort : undefined,
           maxTokens: Math.min(1000, session?.maxTokens ?? 4000),
+          enableWebSearch: webSearch,
           onDelta: (delta) => {/* swallow - we will use summary only internally */},
           signal: controller.signal,
         })
@@ -150,13 +152,14 @@ const AppInner: React.FC = () => {
       for (const m of imageMetas) parts.push(...await prepareAttachmentParts(userMsg.id, m))
       parts.push({ type: 'text', text: userMsg.content })
 
-      await streamChatCompletion({
+      await streamResponse({
         apiKey: state.settings.apiKey!,
         model: mapUiModelToApi(model),
         messages: [...ctx, { role: 'user', content: parts }],
         temperature: supportsTemperature(model) ? session?.temperature : undefined,
         reasoningEffort: supportsReasoningEffort(model) ? session?.reasoningEffort : undefined,
         maxTokens: session?.maxTokens,
+        enableWebSearch: webSearch,
         onDelta: (delta) => dispatch({ type: 'updateMessage', id: assistantMsg.id, patch: { content: (assistantMsg.content += delta) } }),
         signal: controller.signal,
       })
@@ -223,16 +226,20 @@ const AppInner: React.FC = () => {
                 <select className="border rounded px-2 py-1 bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700" value={model} onChange={e=>setModel(e.target.value as any)}>
                   {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
                 </select>
-                <div className="flex-1">
+                <div className="flex-1 flex items-center gap-3">
                   <AttachmentPicker compact pending={pendingFiles} metas={[]} onSelectFiles={(files)=>{
-                    const arr = Array.from(files as any).filter(f=> sniffKind(f.type, f.name) !== 'other')
-                    if (arr.length !== (files as any).length) alert('Some files were skipped because their type is not supported for context.')
+                    const arr = Array.from(files as Array<File>).filter(f=> sniffKind(f.type, f.name) !== 'other')
+                    if (arr.length !== (files as Array<File>).length) alert('Some files were skipped because their type is not supported for context.')
                     const merged = [...pendingFiles, ...arr]
-                    const total = merged.reduce((a,b)=>a+b.size,0)
+                    const total: number = merged.reduce((a,b:File)=>a+b.size,0)
                     if (merged.length > MAX_ATTACHMENTS) { alert(`Max ${MAX_ATTACHMENTS} attachments per message`); return }
                     if (total > MAX_TOTAL_BYTES) { alert('Total attachments must be ≤ 50MB'); return }
                     setPendingFiles(merged)
                   }} onRemovePending={(i)=> setPendingFiles(prev=>prev.filter((_,idx)=>idx!==i))} />
+                  <label className="text-sm flex items-center gap-1 select-none">
+                    <input type="checkbox" className="mr-1" checked={webSearch} onChange={e=>setWebSearch(e.target.checked)} />
+                    <span>Search</span>
+                  </label>
                 </div>
               </div>
               <textarea
@@ -526,6 +533,7 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
   const session = state.sessions.find(s => s.id === sessionId)
   const [replyText, setReplyText] = useState('')
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [replySearch, setReplySearch] = useState(false)
   const [replyParentId, setReplyParentId] = useState<string | undefined>(undefined)
   const [isStreaming, setIsStreaming] = useState(false)
   const [aborter, setAborter] = useState<AbortController | null>(null)
@@ -671,13 +679,14 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
         const largeParts: any[] = []
         for (const m of largeMetas) largeParts.push(...await prepareAttachmentParts(user.id, m))
         const summaryPrompt = { type: 'text', text: 'Summarize the following file(s) concisely (≤ 800 tokens), preserving structure, key entities, numbers, and code blocks where relevant. Output only the summary.' }
-        await streamChatCompletion({
+        await streamResponse({
           apiKey: state.settings.apiKey!,
           model: mapUiModelToApi(assistant.model!),
           messages: [...ctx, { role: 'user', content: [summaryPrompt, ...largeParts] }],
           temperature: supportsTemperature(assistant.model!) ? session?.temperature : undefined,
           reasoningEffort: supportsReasoningEffort(assistant.model!) ? session?.reasoningEffort : undefined,
           maxTokens: Math.min(1000, session?.maxTokens ?? 4000),
+          enableWebSearch: replySearch,
           onDelta: ()=>{},
           signal: controller.signal,
         })
@@ -690,13 +699,14 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
       for (const m of imageMetas) parts.push(...await prepareAttachmentParts(user.id, m))
       parts.push({ type: 'text', text: user.content })
 
-      await streamChatCompletion({
+      await streamResponse({
         apiKey: state.settings.apiKey!,
         model: mapUiModelToApi(assistant.model!),
         messages: [...ctx, { role: 'user', content: parts }],
         temperature: supportsTemperature(assistant.model!) ? session?.temperature : undefined,
         reasoningEffort: supportsReasoningEffort(assistant.model!) ? session?.reasoningEffort : undefined,
         maxTokens: session?.maxTokens,
+        enableWebSearch: replySearch,
         onDelta: (delta) => dispatch({ type: 'updateMessage', id: assistant.id, patch: { content: (assistant.content += delta) } }),
         signal: controller.signal,
       })
@@ -738,15 +748,21 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
             <button className="underline" onClick={()=>setReplyParentId(undefined)}>clear</button>
           </div>
         )}
-        <AttachmentPicker compact pending={pendingFiles} metas={[]} onSelectFiles={(files)=>{
-          const arr = Array.from(files as any).filter(f=> sniffKind(f.type, f.name) !== 'other')
-          if (arr.length !== (files as any).length) alert('Some files were skipped because their type is not supported for context.')
-          const merged = [...pendingFiles, ...arr]
-          const total = merged.reduce((a,b)=>a+b.size,0)
-          if (merged.length > MAX_ATTACHMENTS) { alert(`Max ${MAX_ATTACHMENTS} attachments per message`); return }
-          if (total > MAX_TOTAL_BYTES) { alert('Total attachments must be ≤ 50MB'); return }
-          setPendingFiles(merged)
-        }} onRemovePending={(i)=> setPendingFiles(prev=>prev.filter((_,idx)=>idx!==i))} />
+        <div className="flex items-center gap-3">
+          <AttachmentPicker compact pending={pendingFiles} metas={[]} onSelectFiles={(files)=>{
+            const arr = Array.from(files as Array<File>).filter(f=> sniffKind(f.type, f.name) !== 'other')
+            if (arr.length !== (files as Array<File>).length) alert('Some files were skipped because their type is not supported for context.')
+            const merged = [...pendingFiles, ...arr]
+            const total: number = merged.reduce((a,b:File)=>a+b.size,0)
+            if (merged.length > MAX_ATTACHMENTS) { alert(`Max ${MAX_ATTACHMENTS} attachments per message`); return }
+            if (total > MAX_TOTAL_BYTES) { alert('Total attachments must be ≤ 50MB'); return }
+            setPendingFiles(merged)
+          }} onRemovePending={(i)=> setPendingFiles(prev=>prev.filter((_,idx)=>idx!==i))} />
+          <label className="text-sm flex items-center gap-1 select-none">
+            <input type="checkbox" className="mr-1" checked={replySearch} onChange={e=>setReplySearch(e.target.checked)} />
+            <span>Search</span>
+          </label>
+        </div>
         <textarea
           className="border rounded flex-1 p-2 min-h-[60px] bg-white dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
           placeholder="Type a reply"

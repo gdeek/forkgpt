@@ -41,3 +41,17 @@ export const supportsImages = (model: string): boolean => {
   // Per user decision, gpt-4o, gpt-5 and o3 all support images
   return apiModel === 'gpt-4o' || apiModel === 'gpt-5' || apiModel.startsWith('o3')
 }
+
+export type WebSearchApiStyle = 'responses' | 'chat-search-preview' | 'none'
+
+// Returns whether a model supports first‑party Web Search and how to enable it
+export const webSearchSupport = (model: string): { supported: boolean; style: WebSearchApiStyle } => {
+  const apiModel = mapUiModelToApi(model)
+  // Our UI models (gpt-4o, gpt-5, o3) all support Web Search via Responses API
+  if (apiModel === 'gpt-4o' || apiModel === 'gpt-5' || apiModel.startsWith('o3')) {
+    return { supported: true, style: 'responses' }
+  }
+  return { supported: false, style: 'none' }
+}
+
+export const supportsWebSearch = (model: string): boolean => webSearchSupport(model).supported

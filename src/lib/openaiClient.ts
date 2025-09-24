@@ -1,4 +1,5 @@
 import type { ChatMessage } from './contextBuilder'
+import { supportsWebSearch } from './models'
 
 export interface StreamOptions {
   apiKey: string
@@ -7,26 +8,54 @@ export interface StreamOptions {
   temperature?: number
   maxTokens?: number
   reasoningEffort?: 'low' | 'medium' | 'high'
+  enableWebSearch?: boolean
   onDelta: (delta: string) => void
   signal?: AbortSignal
 }
 
-// Minimal client for OpenAI Chat Completions streaming
-export const streamChatCompletion = async (opts: StreamOptions): Promise<void> => {
-  const { apiKey, model, messages, temperature, maxTokens, reasoningEffort, onDelta, signal } = opts
+export const streamResponse = async (opts: StreamOptions): Promise<void> => {
+  const { apiKey, model, messages, temperature, maxTokens, reasoningEffort, enableWebSearch, onDelta, signal } = opts
+
+  // Convert ChatMessage[] to Responses API `input` format.
+  // Map old Chat Completions parts to Responses input types.
+  const toResponsesPart = (part: any, role: 'system' | 'user' | 'assistant') => {
+    const textPart = (t: string, kind: 'input_text' | 'output_text') => ({ type: kind, text: t })
+    if (!part || typeof part !== 'object') {
+      return role === 'assistant' ? textPart(String(part ?? ''), 'output_text') : textPart(String(part ?? ''), 'input_text')
+    }
+    if (part.type === 'text') return role === 'assistant' ? textPart(part.text, 'output_text') : textPart(part.text, 'input_text')
+    if (part.type === 'image_url') {
+      // Images are only valid on the input side
+      if (role === 'assistant') return textPart('[image omitted]', 'output_text')
+      return { type: 'input_image', image_url: part.image_url }
+    }
+    if (part.type === 'input_text' || part.type === 'input_image' || part.type === 'output_text') return part
+    // Fallback to text
+    return role === 'assistant' ? textPart(JSON.stringify(part), 'output_text') : textPart(JSON.stringify(part), 'input_text')
+  }
+  const input = messages.map(m => ({
+    role: m.role,
+    content: Array.isArray(m.content)
+      ? m.content.map(p => toResponsesPart(p, m.role))
+      : [toResponsesPart({ type: 'text', text: String(m.content) }, m.role)]
+  }))
+
   const payload: Record<string, any> = {
     model,
-    messages,
+    input,
     stream: true,
   }
   if (typeof temperature === 'number') payload.temperature = temperature
-  if (typeof maxTokens === 'number') {
-    if (model === 'gpt-5' || model.startsWith('o3')) payload.max_completion_tokens = maxTokens
-    else payload.max_tokens = maxTokens
+  if (typeof maxTokens === 'number') payload.max_output_tokens = maxTokens
+  if (reasoningEffort && (model === 'gpt-5' || model.startsWith('o3') || model.startsWith('o1'))) {
+    payload.reasoning = { effort: reasoningEffort }
   }
-  if (reasoningEffort) payload.reasoning_effort = reasoningEffort
+  if (enableWebSearch && supportsWebSearch(model)) {
+    payload.tools = [{ type: 'web_search' }]
+    // tool_choice defaults to 'auto'
+  }
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -58,8 +87,16 @@ export const streamChatCompletion = async (opts: StreamOptions): Promise<void> =
       if (data === '[DONE]') return
       try {
         const json = JSON.parse(data)
-        const delta = json.choices?.[0]?.delta?.content
-        if (typeof delta === 'string' && delta.length) onDelta(delta)
+        // Responses API streaming events
+        const t = json.type as string | undefined
+        if (t === 'response.output_text.delta' && typeof json.delta === 'string') {
+          onDelta(json.delta)
+        } else if (t === 'response.delta' && typeof json.delta === 'string') {
+          onDelta(json.delta)
+        } else if (t === 'message.delta' && typeof json.delta === 'string') {
+          onDelta(json.delta)
+        }
+        // Ignore other event types (tool calls, done, etc.)
       } catch {
         // ignore malformed chunk
       }
