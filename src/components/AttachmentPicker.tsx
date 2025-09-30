@@ -44,6 +44,8 @@ export const AttachmentPicker: React.FC<Props> = ({ pending, metas, onSelectFile
           ref={inputRef}
           type="file"
           multiple
+          // Hint to pick common supported types
+          accept="image/*,application/pdf,text/plain,text/markdown,.csv,.json,.js,.ts,.py,.html,.htm,.xml,.yml,.yaml,.sql,.log"
           className="hidden"
           onChange={(e)=>{
             if (e.target.files) onSelectFiles(e.target.files)

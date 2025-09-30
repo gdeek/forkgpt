@@ -27,7 +27,9 @@ export const streamResponse = async (opts: StreamOptions): Promise<void> => {
     if (part.type === 'image_url') {
       // Images are only valid on the input side
       if (role === 'assistant') return textPart('[image omitted]', 'output_text')
-      return { type: 'input_image', image_url: part.image_url }
+      // Accept both Chat Completions-style { image_url: { url } } and string forms
+      const url = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url
+      return { type: 'input_image', image_url: String(url ?? '') }
     }
     if (part.type === 'input_text' || part.type === 'input_image' || part.type === 'output_text') return part
     // Fallback to text
