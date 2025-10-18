@@ -75,8 +75,22 @@ export const buildReplyContext = (params: BuildReplyContextParams): ChatMessage[
 
   // Convert to ChatMessages with optional system
   const out: ChatMessage[] = []
+  const isEmptyContent = (c: string | ContentPart[]): boolean => {
+    if (typeof c === 'string') return (c.trim().length === 0)
+    for (const p of c) {
+      if (p && p.type === 'text' && (p.text?.trim()?.length ?? 0) > 0) return false
+      if (p && p.type === 'image_url') return false
+    }
+    return true
+  }
   if (session.systemPrompt) out.push({ role: 'system', content: session.systemPrompt })
-  for (const m of selected) out.push({ role: m.role, content: m.content })
+  for (const m of selected) {
+    // skip empty assistant placeholders
+    if (m.role === 'assistant' && isEmptyContent(m.content as any)) continue
+    // user/system should never be empty, but guard anyway
+    if ((m.role === 'user' || m.role === 'system') && isEmptyContent(m.content as any)) continue
+    out.push({ role: m.role, content: m.content })
+  }
 
   // 4) Trim: first drop oldest from branch selection, then oldest main
   const branchIds = new Set(toInclude.map(m => m.id))
@@ -116,6 +130,14 @@ export const buildMainContext = (params: BuildMainContextParams): ChatMessage[] 
   const { session, allMessages, mainTurnsLimit = 6, maxTokens = 32000 } = params
   const idx = indexById(allMessages)
   const out: ChatMessage[] = []
+  const isEmptyContent = (c: string | ContentPart[]): boolean => {
+    if (typeof c === 'string') return (c.trim().length === 0)
+    for (const p of c) {
+      if (p && p.type === 'text' && (p.text?.trim()?.length ?? 0) > 0) return false
+      if (p && p.type === 'image_url') return false
+    }
+    return true
+  }
   if (session.systemPrompt) out.push({ role: 'system', content: session.systemPrompt })
 
   // include enabled reply branches (anchor chronological order, root->leaf of enabled nodes)
@@ -162,7 +184,11 @@ export const buildMainContext = (params: BuildMainContextParams): ChatMessage[] 
   // Main chat (user + assistant) is always included; limit applied below
   const enabledMain = main
   const limited = enabledMain.slice(-Math.max(0, mainTurnsLimit * 2))
-  for (const m of limited) out.push({ role: m.role, content: m.content })
+  for (const m of limited) {
+    if (m.role === 'assistant' && isEmptyContent(m.content as any)) continue
+    if ((m.role === 'user' || m.role === 'system') && isEmptyContent(m.content as any)) continue
+    out.push({ role: m.role, content: m.content })
+  }
 
   // trim: branch-first then main
   let branchCount = out.length - limited.length - (session.systemPrompt ? 1 : 0)

@@ -4,7 +4,7 @@ import { nanoid } from 'nanoid'
 import type { Message } from './types'
 import { buildMainContext, buildReplyContext } from './lib/contextBuilder'
 import { streamResponse } from './lib/openaiClient'
-import { UI_MODELS, mapUiModelToApi, supportsReasoningEffort, supportsTemperature, supportsImages } from './lib/models'
+import { UI_MODELS, mapUiModelToApi, supportsReasoningEffort, supportsTemperature, supportsImages, supportsWebSearch } from './lib/models'
 import { generateSessionTitle } from './lib/titleGenerator'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { encryptString, decryptString } from './lib/crypto'
@@ -74,10 +74,17 @@ const AppInner: React.FC = () => {
   }, [state.sessions.length])
   const selectSession = (id: string) => dispatch({ type: 'selectSession', id })
 
+  const getApiKeyForModel = (m: string): { key?: string; provider: 'openai' | 'anthropic' } => {
+    const id = mapUiModelToApi(m)
+    if (id.startsWith('claude-')) return { key: state.settings.anthropicApiKey?.trim(), provider: 'anthropic' }
+    return { key: state.settings.apiKey?.trim(), provider: 'openai' }
+  }
+
   const onSendMain = async () => {
     if (!session || !composer.trim()) return
-    if (!state.settings.apiKey) {
-      alert('Set your OpenAI API key in Settings')
+    const { key, provider } = getApiKeyForModel(model)
+    if (!key) {
+      alert(provider === 'anthropic' ? 'Set your Anthropic API key in Settings' : 'Set your OpenAI API key in Settings')
       return
     }
     // Limits
@@ -116,7 +123,7 @@ const AppInner: React.FC = () => {
 
     const ctx = buildMainContext({
       session,
-      allMessages: [...state.messages, userMsg, assistantMsg],
+      allMessages: [...state.messages, userMsg],
       mainTurnsLimit: session?.mainTurnsLimit,
       maxTokens: session?.maxTokens,
     })
@@ -131,13 +138,13 @@ const AppInner: React.FC = () => {
         for (const m of largeMetas) largeParts.push(...await prepareAttachmentParts(userMsg.id, m))
         const summaryPrompt = { type: 'text', text: 'Summarize the following file(s) concisely (≤ 800 tokens), preserving structure, key entities, numbers, and code blocks where relevant. Output only the summary.' }
         await streamResponse({
-          apiKey: state.settings.apiKey!,
+          apiKey: getApiKeyForModel(model).key!,
           model: mapUiModelToApi(model),
           messages: [...ctx, { role: 'user', content: [summaryPrompt, ...largeParts] }],
           temperature: supportsTemperature(model) ? session?.temperature : undefined,
           reasoningEffort: supportsReasoningEffort(model) ? session?.reasoningEffort : undefined,
           maxTokens: Math.min(1000, session?.maxTokens ?? 4000),
-          enableWebSearch: webSearch,
+          enableWebSearch: webSearch && supportsWebSearch(model),
           onDelta: (delta) => {/* swallow - we will use summary only internally */},
           signal: controller.signal,
         })
@@ -153,13 +160,13 @@ const AppInner: React.FC = () => {
       parts.push({ type: 'text', text: userMsg.content })
 
       await streamResponse({
-        apiKey: state.settings.apiKey!,
+        apiKey: getApiKeyForModel(model).key!,
         model: mapUiModelToApi(model),
         messages: [...ctx, { role: 'user', content: parts }],
         temperature: supportsTemperature(model) ? session?.temperature : undefined,
         reasoningEffort: supportsReasoningEffort(model) ? session?.reasoningEffort : undefined,
         maxTokens: session?.maxTokens,
-        enableWebSearch: webSearch,
+        enableWebSearch: webSearch && supportsWebSearch(model),
         onDelta: (delta) => dispatch({ type: 'updateMessage', id: assistantMsg.id, patch: { content: (assistantMsg.content += delta) } }),
         signal: controller.signal,
       })
@@ -171,10 +178,13 @@ const AppInner: React.FC = () => {
     }
 
     // Generate session title after first exchange
-    if (isFirstMain && state.settings.apiKey) {
+    if (isFirstMain) {
       try {
-        const title = await generateSessionTitle(state.settings.apiKey, userMsg.content)
-        dispatch({ type: 'renameSession', id: session.id, title })
+        const { key } = getApiKeyForModel(model)
+        if (key) {
+          const title = await generateSessionTitle(key, userMsg.content, mapUiModelToApi(model))
+          dispatch({ type: 'renameSession', id: session.id, title })
+        }
       } catch {
         // ignore title errors
       }
@@ -384,76 +394,32 @@ const SettingsButton: React.FC = () => {
       <button className="px-2 py-1 border rounded" onClick={()=>setOpen(true)}>Settings</button>
       {open && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
-          <div className="bg-white dark:bg-gray-900 dark:text-gray-100 rounded border dark:border-gray-700 p-4 w-[460px]">
-            <div className="font-semibold mb-2">Settings</div>
-            {view === 'unlock' ? (
-              <div className="space-y-2">
-                <div className="text-sm text-gray-700">An encrypted API key is stored. Enter password to unlock for this session.</div>
-                <label className="text-sm">Password</label>
-                <input className="border rounded w-full p-2" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
-                <div className="mt-3 flex justify-between items-center">
-                  <button className="text-xs underline" onClick={()=>{ setReplaceMode(true); setPassword('') }}>Replace key…</button>
-                  <div className="flex gap-2">
-                    <button className="px-2 py-1" onClick={()=>setOpen(false)}>Cancel</button>
-                    <button className="px-2 py-1 bg-black text-white rounded" disabled={busy || !password} onClick={async ()=>{
-                      if (!state.settings.apiKeyEncrypted) return
-                      try {
-                        setBusy(true)
-                        const plain = await decryptString(state.settings.apiKeyEncrypted, password)
-                        dispatch({ type: 'setSettings', settings: { apiKey: plain } })
-                        setPassword('')
-                      } catch (e) {
-                        alert('Decryption failed. Check password.')
-                      } finally { setBusy(false) }
-                    }}>Unlock</button>
-                  </div>
-                </div>
-              </div>
-            ) : view === 'unlocked' ? (
-              <div className="space-y-3">
-                <div className="text-sm text-gray-700">API key is unlocked for this session.</div>
-                <div className="flex justify-between items-center">
-                  <button className="text-xs underline" onClick={()=>{ setReplaceMode(true); setApiKey(''); setPassword('') }}>Replace key…</button>
-                  <div className="flex gap-2">
-                    <button className="px-2 py-1" onClick={()=>setOpen(false)}>Close</button>
-                    <button
-                      className="px-2 py-1 bg-black text-white rounded"
-                      onClick={()=>{
-                        dispatch({ type: 'setSettings', settings: { apiKey: undefined } })
-                        setApiKey(''); setPassword('');
-                      }}
-                    >Lock now</button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <label className="text-sm">OpenAI API Key</label>
-                <input className="border rounded w-full p-2" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="sk-..." />
-                <label className="text-sm">Set Password (required)</label>
-                <input className="border rounded w-full p-2" type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Password to encrypt key" />
-                <div className="text-xs text-gray-500">Your password is not stored; losing it means re-entering the key.</div>
-                <div className="mt-3 flex justify-between items-center">
-                  {hasEncrypted && !replaceMode && <button className="text-xs underline" onClick={()=>{ setReplaceMode(false); setApiKey(''); setPassword('') }}>Unlock existing…</button>}
-                  <div className="flex gap-2">
-                    <button className="px-2 py-1" onClick={()=>setOpen(false)}>Cancel</button>
-                    <button className="px-2 py-1 bg-black text-white rounded" disabled={busy || !apiKey || !password} onClick={async ()=>{
-                      try {
-                        setBusy(true)
-                        const enc = await encryptString(apiKey, password)
-                        // Persist encrypted key and immediately lock: do NOT keep plaintext in memory
-                        dispatch({ type: 'setSettings', settings: { apiKeyEncrypted: enc, apiKey: undefined } })
-                        setApiKey('')
-                        setPassword('')
-                        setReplaceMode(false)
-                      } catch(e) {
-                        alert('Encryption failed')
-                      } finally { setBusy(false) }
-                    }}>Save</button>
-                  </div>
-                </div>
-              </div>
-            )}
+          <div className="bg-white dark:bg-gray-900 dark:text-gray-100 rounded border dark:border-gray-700 p-4 w-[460px]" role="dialog" aria-modal="true" aria-label="Settings">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-semibold">Settings</div>
+              <button
+                className="px-2 py-1 border rounded text-sm"
+                onClick={()=>setOpen(false)}
+                title="Close"
+              >x</button>
+            </div>
+            <div className="space-y-6">
+              <KeySection
+                title="OpenAI"
+                unlockedField="apiKey"
+                encryptedField="apiKeyEncrypted"
+                placeholder="sk-..."
+                onClose={()=>setOpen(false)}
+              />
+              <div className="border-t dark:border-gray-700" />
+              <KeySection
+                title="Anthropic"
+                unlockedField="anthropicApiKey"
+                encryptedField="anthropicApiKeyEncrypted"
+                placeholder="sk-ant-..."
+                onClose={()=>setOpen(false)}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -645,7 +611,11 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
 
   const onSendReply = async (parentId?: string) => {
     if (!replyText.trim()) return
-    if (!state.settings.apiKey) { alert('Set your OpenAI API key in Settings'); return }
+    // key is checked against the active model of this branch (assistant anchor)
+    const activeModel = mapUiModelToApi(anchor.model ?? 'gpt-4o')
+    const needsAnthropic = activeModel.startsWith('claude-')
+    const key = needsAnthropic ? state.settings.anthropicApiKey : state.settings.apiKey
+    if (!key) { alert(needsAnthropic ? 'Set your Anthropic API key in Settings' : 'Set your OpenAI API key in Settings'); return }
     // Guard: replies should target assistant messages. If a user node was passed,
     // walk up to the nearest assistant ancestor within this thread; otherwise fall back to root.
     if (parentId) {
@@ -679,7 +649,7 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
 
     const ctx = buildReplyContext({
       session,
-      allMessages: [...state.messages, user, assistant],
+      allMessages: [...state.messages, user],
       anchorMessageId: anchorId,
       parentId: user.id,
       mainTurnsLimit: session?.mainTurnsLimit,
@@ -696,13 +666,13 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
         for (const m of largeMetas) largeParts.push(...await prepareAttachmentParts(user.id, m))
         const summaryPrompt = { type: 'text', text: 'Summarize the following file(s) concisely (≤ 800 tokens), preserving structure, key entities, numbers, and code blocks where relevant. Output only the summary.' }
         await streamResponse({
-          apiKey: state.settings.apiKey!,
+          apiKey: key!,
           model: mapUiModelToApi(assistant.model!),
           messages: [...ctx, { role: 'user', content: [summaryPrompt, ...largeParts] }],
           temperature: supportsTemperature(assistant.model!) ? session?.temperature : undefined,
           reasoningEffort: supportsReasoningEffort(assistant.model!) ? session?.reasoningEffort : undefined,
           maxTokens: Math.min(1000, session?.maxTokens ?? 4000),
-          enableWebSearch: replySearch,
+          enableWebSearch: replySearch && supportsWebSearch(assistant.model || ''),
           onDelta: ()=>{},
           signal: controller.signal,
         })
@@ -716,13 +686,13 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
       parts.push({ type: 'text', text: user.content })
 
       await streamResponse({
-        apiKey: state.settings.apiKey!,
+        apiKey: key!,
         model: mapUiModelToApi(assistant.model!),
         messages: [...ctx, { role: 'user', content: parts }],
         temperature: supportsTemperature(assistant.model!) ? session?.temperature : undefined,
         reasoningEffort: supportsReasoningEffort(assistant.model!) ? session?.reasoningEffort : undefined,
         maxTokens: session?.maxTokens,
-        enableWebSearch: replySearch,
+        enableWebSearch: replySearch && supportsWebSearch(assistant.model || ''),
         onDelta: (delta) => dispatch({ type: 'updateMessage', id: assistant.id, patch: { content: (assistant.content += delta) } }),
         signal: controller.signal,
       })
@@ -817,3 +787,104 @@ const App: React.FC = () => (
 )
 
 export default App
+
+// reusable key management panel for providers
+const KeySection: React.FC<{
+  title: string
+  unlockedField: 'apiKey' | 'anthropicApiKey'
+  encryptedField: 'apiKeyEncrypted' | 'anthropicApiKeyEncrypted'
+  placeholder: string
+  onClose: () => void
+}> = ({ title, unlockedField, encryptedField, placeholder, onClose }) => {
+  const { state, dispatch } = useApp()
+  const [key, setKey] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [replaceMode, setReplaceMode] = useState(false)
+
+  const hasEncrypted = !!(state.settings as any)[encryptedField]
+  const isUnlocked = !!(state.settings as any)[unlockedField]
+  const view: 'set' | 'unlock' | 'unlocked' = replaceMode ? 'set' : (hasEncrypted ? (isUnlocked ? 'unlocked' : 'unlock') : 'set')
+
+  return (
+    <div>
+      <div className="font-semibold mb-2">{title}</div>
+      {view === 'unlock' ? (
+        <div className="space-y-2">
+          <div className="text-sm text-gray-700">An encrypted {title} API key is stored. Enter password to unlock for this session.</div>
+          <label className="text-sm">Password</label>
+          <input className="border rounded w-full p-2 bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 placeholder:text-gray-500 dark:placeholder:text-gray-400" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
+          <div className="mt-3 flex justify-between items-center">
+            <button className="text-xs underline" onClick={()=>{ setReplaceMode(true); setPassword('') }}>Replace key…</button>
+            <div className="flex gap-2">
+              <button className="px-2 py-1" onClick={onClose}>Cancel</button>
+              <button className="px-2 py-1 bg-black text-white rounded" disabled={busy || !password} onClick={async ()=>{
+                const encVal = (state.settings as any)[encryptedField]
+                if (!encVal) return
+                try {
+                  setBusy(true)
+                  const plain = (await decryptString(encVal as string, password)).trim()
+                  dispatch({ type: 'setSettings', settings: { [unlockedField]: plain } as any })
+                  setPassword('')
+                } catch {
+                  alert('Decryption failed. Check password.')
+                } finally { setBusy(false) }
+              }}>Unlock</button>
+            </div>
+          </div>
+        </div>
+      ) : view === 'unlocked' ? (
+        <div className="space-y-3">
+          <div className="text-sm text-gray-700">{title} API key is unlocked for this session.</div>
+          <div className="flex justify-between items-center">
+            <button className="text-xs underline" onClick={()=>{ setReplaceMode(true); setKey(''); setPassword('') }}>Replace key…</button>
+            <div className="flex gap-2">
+              <button
+                className="px-2 py-1 bg-black text-white rounded"
+                onClick={()=>{
+                  dispatch({ type: 'setSettings', settings: { [unlockedField]: undefined } as any })
+                  setKey(''); setPassword('');
+                }}
+              >Lock now</button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <label className="text-sm">{title} API Key</label>
+          <input
+            className="border rounded w-full p-2 bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 placeholder:text-gray-500 dark:placeholder:text-gray-400"
+            value={key}
+            onChange={e=>setKey(e.target.value)}
+            placeholder={placeholder}
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            autoComplete="off"
+          />
+          <label className="text-sm">Set Password (required)</label>
+          <input className="border rounded w-full p-2 bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 placeholder:text-gray-500 dark:placeholder:text-gray-400" type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Password to encrypt key" />
+          <div className="text-xs text-gray-500">Your password is not stored; losing it means re-entering the key.</div>
+          <div className="mt-3 flex justify-between items-center">
+            {hasEncrypted && !replaceMode && <button className="text-xs underline" onClick={()=>{ setReplaceMode(false); setKey(''); setPassword('') }}>Unlock existing…</button>}
+            <div className="flex gap-2">
+              <button className="px-2 py-1" onClick={onClose}>Cancel</button>
+              <button className="px-2 py-1 bg-black text-white rounded" disabled={busy || !key || !password} onClick={async ()=>{
+                try {
+                  setBusy(true)
+                  const enc = await encryptString(key.trim(), password)
+                  dispatch({ type: 'setSettings', settings: { [encryptedField]: enc, [unlockedField]: undefined } as any })
+                  setKey('')
+                  setPassword('')
+                  setReplaceMode(false)
+                } catch {
+                  alert('Encryption failed')
+                } finally { setBusy(false) }
+              }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

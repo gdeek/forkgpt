@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 export const settingsSchema = z.object({
   apiKey: z.string().min(10).optional(),
+  anthropicApiKey: z.string().min(10).optional(),
   defaultModel: z.string().optional(),
 })
 
@@ -11,4 +12,3 @@ export const messageInputSchema = z.object({
 
 export type SettingsInput = z.infer<typeof settingsSchema>
 export type MessageInput = z.infer<typeof messageInputSchema>
-

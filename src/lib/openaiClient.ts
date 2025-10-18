@@ -1,5 +1,6 @@
 import type { ChatMessage } from './contextBuilder'
 import { supportsWebSearch } from './models'
+import { streamResponse as anthropicStream } from './anthropicClient'
 
 export interface StreamOptions {
   apiKey: string
@@ -15,6 +16,11 @@ export interface StreamOptions {
 
 export const streamResponse = async (opts: StreamOptions): Promise<void> => {
   const { apiKey, model, messages, temperature, maxTokens, reasoningEffort, enableWebSearch, onDelta, signal } = opts
+
+  // route claude models to anthropic client
+  if (model.startsWith('claude-')) {
+    return anthropicStream({ apiKey, model, messages, temperature, maxTokens, reasoningEffort, enableWebSearch, onDelta, signal })
+  }
 
   // Convert ChatMessage[] to Responses API `input` format.
   // Map old Chat Completions parts to Responses input types.

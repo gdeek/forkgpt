@@ -27,8 +27,10 @@ export interface Message {
 
 export interface Settings {
   apiKey?: string
+  anthropicApiKey?: string
   defaultModel?: string
   apiKeyEncrypted?: string
+  anthropicApiKeyEncrypted?: string
 }
 
 export interface UIState {
