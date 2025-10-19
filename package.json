@@ -1,13 +1,17 @@
 {
-  "name": "forkgpt-ui",
+  "name": "forkgpt",
   "private": true,
-  "version": "0.1.0",
-  "packageManager": "yarn@1.22.22",
+  "version": "1.0.0",
+  "packageManager": "yarn@1.22.19",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
     "preview": "vite preview",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "classnames": "2.5.1",
