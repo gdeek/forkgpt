@@ -38,15 +38,14 @@ A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a r
 - ~Export and Import Sessions (including replies and context selections)~ ✅
 - Replace localStorage with IndexedDB
 
-## Getting Started
-1. Install deps
+## Local Development
+- Install deps and build
+   - yarn install
+   - yrn build
 
-   yarn install
+- Start dev server
+   - yarn dev
 
-2. Start dev server
+- Open http://localhost:5173
 
-   yarn dev
-
-3. Open http://localhost:5173
-
-4. Click Settings to add your OpenAI API key. Set a strong password to encrypt it at rest.
+- Click Settings to add your OpenAI/Anthropic API key. Set a strong password to encrypt it at rest.
