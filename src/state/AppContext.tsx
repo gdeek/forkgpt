@@ -28,6 +28,7 @@ type Action =
   | { type: 'setSettings'; settings: Partial<Settings> }
   | { type: 'setReplyViewerWidth'; width: number }
   | { type: 'setTheme'; theme: 'light' | 'dark' }
+  | { type: 'importSessions'; sessions: Session[]; messages: Message[] }
 
 const loadInitialState = (): State => ({
   sessions: loadSessions(),
@@ -111,6 +112,16 @@ const reducer = (state: State, action: Action): State => {
     }
     case 'setSettings': {
       return { ...state, settings: { ...state.settings, ...action.settings } }
+    }
+    case 'importSessions': {
+      // replace all sessions and messages with imported data
+      const newActiveSessionId = action.sessions.length > 0 ? action.sessions[0].id : undefined
+      return {
+        ...state,
+        sessions: action.sessions,
+        messages: action.messages,
+        ui: { ...state.ui, activeSessionId: newActiveSessionId, activeReplyViewerAnchorId: undefined }
+      }
     }
     default:
       return state

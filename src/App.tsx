@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { AppProvider, useApp } from './state/AppContext'
 import { nanoid } from 'nanoid'
-import type { Message } from './types'
+import type { Message, Session } from './types'
 import { buildMainContext, buildReplyContext } from './lib/contextBuilder'
 import { streamResponse } from './lib/openaiClient'
 import { UI_MODELS, mapUiModelToApi, supportsReasoningEffort, supportsTemperature, supportsImages, supportsWebSearch } from './lib/models'
@@ -453,6 +453,125 @@ const SessionSidebar: React.FC = () => {
     if (renamingId) dispatch({ type: 'renameSession', id: renamingId, title: renameVal.trim() || 'Untitled' })
     setRenamingId(null); setRenameVal('')
   }
+  const exportSessions = () => {
+    try {
+      const sanitizedSessions = state.sessions.map(session => {
+        const sessionMessages = state.messages
+          .filter(m => m.sessionId === session.id)
+          .sort((a, b) => a.createdAt - b.createdAt)
+          .map(m => {
+            const { attachments, ...base } = m
+            if (!attachments || attachments.length === 0) return base
+            return {
+              ...base,
+              attachments: attachments.map(({ previewDataUrl, ...meta }) => meta),
+            }
+          })
+        return { ...session, messages: sessionMessages }
+      })
+
+      const now = new Date()
+      const pad = (val: number) => String(val).padStart(2, '0')
+      const filename = `forkgpt_sessions_${now.getFullYear()}_${pad(now.getMonth() + 1)}_${pad(now.getDate())}_${pad(now.getHours())}_${pad(now.getMinutes())}_${pad(now.getSeconds())}.json`
+      const payload = {
+        exportedAt: now.toISOString(),
+        sessions: sanitizedSessions,
+      }
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = filename
+      anchor.style.display = 'none'
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      setTimeout(() => URL.revokeObjectURL(url), 0)
+    } catch (err) {
+      console.error('Failed to export sessions', err)
+      const message = err instanceof Error ? err.message : String(err)
+      alert(`Failed to export sessions: ${message}`)
+    }
+  }
+
+  const validateImportFile = (data: any): { sessions: Session[]; messages: Message[] } => {
+    // check if it's a valid export format
+    if (!data || typeof data !== 'object') {
+      throw new Error('Invalid file format')
+    }
+
+    if (!data.exportedAt || !data.sessions || !Array.isArray(data.sessions)) {
+      throw new Error('Not a valid ForkGPT sessions export file')
+    }
+
+    // Validate sessions structure
+    const sessions: Session[] = []
+    const messages: Message[] = []
+
+    for (const sessionData of data.sessions) {
+      if (!sessionData.id || !sessionData.title || typeof sessionData.createdAt !== 'number') {
+        throw new Error('Invalid session structure in import file')
+      }
+
+      // Extract session without messages
+      const { messages: sessionMessages, ...session } = sessionData
+      sessions.push(session as Session)
+
+      // Validate and extract messages
+      if (sessionMessages && Array.isArray(sessionMessages)) {
+        for (const msg of sessionMessages) {
+          if (!msg.id || !msg.sessionId || !msg.role || !msg.content || typeof msg.createdAt !== 'number') {
+            throw new Error('Invalid message structure in import file')
+          }
+          messages.push(msg as Message)
+        }
+      }
+    }
+
+    return { sessions, messages }
+  }
+
+  const importSessions = (file: File) => {
+    // validate filename
+    if (!file.name.startsWith('forkgpt_sessions')) {
+      alert('Invalid file. Please select a file that starts with "forkgpt_sessions"')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string
+        const data = JSON.parse(content)
+        const { sessions, messages } = validateImportFile(data)
+
+        // show confirmation dialog
+        const confirmMessage = `This will replace all ${state.sessions.length} existing sessions with ${sessions.length} imported sessions. All current chat history will be lost.\n\nRecommendation: Export your current sessions first!\n\nProceed with import?`
+
+        if (window.confirm(confirmMessage)) {
+          dispatch({ type: 'importSessions', sessions, messages })
+          alert(`Successfully imported ${sessions.length} sessions with ${messages.length} messages!`)
+        }
+      } catch (err) {
+        console.error('Failed to import sessions', err)
+        const message = err instanceof Error ? err.message : String(err)
+        alert(`Failed to import sessions: ${message}`)
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  const handleImportClick = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json'
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (file) importSessions(file)
+    }
+    input.click()
+  }
+
   return (
     <aside className="w-[260px] border-r dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex flex-col">
       <div className="p-2 border-b dark:border-gray-700 flex items-center justify-between">
@@ -487,6 +606,12 @@ const SessionSidebar: React.FC = () => {
             )}
           </div>
         ))}
+      </div>
+      <div className="p-2 border-t dark:border-gray-700">
+        <div className="flex gap-2">
+          <button className="flex-1 px-2 py-1 border rounded text-sm" onClick={exportSessions}>Export</button>
+          <button className="flex-1 px-2 py-1 border rounded text-sm" onClick={handleImportClick}>Import</button>
+        </div>
       </div>
     </aside>
   )

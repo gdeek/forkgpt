@@ -35,7 +35,7 @@ A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a r
 - ~Claude models integration~ ✅
 - Optional context preview before sending
 - Better token budgeting with a real tokenizer
-- Export and Import Sessions (including replies) 
+- ~Export and Import Sessions (including replies and context selections)~ ✅
 - Replace localStorage with IndexedDB
 
 ## Getting Started
