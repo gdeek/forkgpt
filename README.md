@@ -1,24 +1,25 @@
 # ForkGPT
 
+https://forkgpt.vercel.app/
+
 A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a right‑side Reply Viewer where you can follow multiple what‑ifs without wrecking your main thread. And allows you to branch, nest, and curate which answers should count as context for future messages. 
 
 ## What It Is
-- A local‑first, browser‑based chat UI for exploring ideas and questions - to any depths.
+- Chat UI for exploring ideas and questions - to any depths.
 - Branch replies on the right, keep your main chat tidy on the left.
 - Decide which assistant answers influence future responses with an “Include in context” toggle.
 
-## Why You’ll Like It
-- Compare alternate answers side‑by‑side, keep only the good stuff in memory.
+## The Point   
+- Compare alternate answers side‑by‑side, keep only the replies you *want* in memory.
 - Curate context explicitly instead of hoping the model guesses what to remember.
 - Keep conversations neat while you explore deep rabbit holes in parallel.
 
 ## Highlights
 - Reply Viewer: clean nesting, collapsible nodes, subtle indent guides.
-- Resizable panel: drag the thin divider; we remember your width.
 - Session settings: temperature slider and reasoning effort (`low` | `medium` | `high`) for reasoning models.
 - Local persistence: your sessions live in your browser profile.
 - Safer keys: encrypt your API key at rest with a password; unlock per reload. The key stays in memory only after you unlock.
-- Streams by default, with a Stop button when you need it.
+- Streams model responses by default.
 - Supports Web Search, Attachments (including images and PDFs).
 
 ## Privacy & Security
@@ -36,12 +37,13 @@ A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a r
 - Optional context preview before sending
 - Better token budgeting with a real tokenizer
 - ~Export and Import Sessions (including replies and context selections)~ ✅
+- Add browser storage limit warnings
 - Replace localStorage with IndexedDB
 
 ## Local Development
 - Install deps and build
    - yarn install
-   - yrn build
+   - yarn build
 
 - Start dev server
    - yarn dev
