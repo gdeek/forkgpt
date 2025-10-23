@@ -198,7 +198,10 @@ const AppInner: React.FC = () => {
   return (
     <div className="h-screen flex flex-col">
       <header className="border-b bg-white dark:bg-gray-900 dark:border-gray-700 px-4 py-2 flex items-center gap-2">
-        <div className="font-semibold">ForkGPT</div>
+        <div className="flex items-baseline gap-2">
+          <div className="font-semibold">ForkGPT</div>
+          <AboutLink />
+        </div>
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
           <SettingsButton />
@@ -419,6 +422,67 @@ const SettingsButton: React.FC = () => {
                 placeholder="sk-ant-..."
                 onClose={()=>setOpen(false)}
               />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+const AboutLink: React.FC = () => {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        type="button"
+        className="text-[0.625rem] text-gray-500 underline underline-offset-2 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+        onClick={()=>setOpen(true)}
+      >
+        About
+      </button>
+      {open && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-900 dark:text-gray-100 rounded border dark:border-gray-700 p-4 w-[240px]" role="dialog" aria-modal="true" aria-label="About ForkGPT">
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-semibold text-sm">About</div>
+              <button
+                type="button"
+                className="p-1 text-[0.625rem] text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                onClick={()=>setOpen(false)}
+                aria-label="Close"
+              >
+                x
+              </button>
+            </div>
+            <div className="space-y-2">
+              <a
+                href="https://github.com/gdeek/forkgpt?tab=readme-ov-file#forkgpt"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between rounded border border-transparent px-3 py-2 text-sm hover:border-gray-200 dark:hover:border-gray-700"
+              >
+                <span className="text-gray-900 dark:text-gray-100">Source Code</span>
+                <span className="text-xs text-gray-500">GitHub</span>
+              </a>
+              <div className="w-3/4 mx-auto border-t border-gray-200 dark:border-gray-700" />
+              <a
+                href="https://www.linkedin.com/in/deepak-kumar-ganesan-357631125/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center rounded border border-transparent px-3 py-3 hover:border-gray-200 dark:hover:border-gray-700"
+                aria-label="LinkedIn"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  role="img"
+                  aria-hidden="true"
+                >
+                  <path fill="#0A66C2" d="M20.447 20.452H16.9V15.4c0-1.204-.024-2.752-1.676-2.752-1.676 0-1.932 1.309-1.932 2.664v5.14H9.745V9h3.4v1.561h.047c.474-.9 1.634-1.85 3.365-1.85 3.598 0 4.264 2.37 4.264 5.455zM5.337 7.433a1.966 1.966 0 11.004-3.933 1.966 1.966 0 01-.004 3.933zM7.119 20.452H3.554V9h3.565z" />
+                </svg>
+              </a>
             </div>
           </div>
         </div>
