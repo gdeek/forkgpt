@@ -1,6 +1,9 @@
 import type { ChatMessage } from './contextBuilder'
-import { supportsWebSearch } from './models'
+import { getProviderForModel, supportsWebSearch } from './models'
 import { streamResponse as anthropicStream } from './anthropicClient'
+import { streamResponse as geminiStream } from './geminiClient'
+import { streamResponse as moonshotStream } from './moonshotClient'
+import type { ReasoningEffortValue } from '../types'
 
 export interface StreamOptions {
   apiKey: string
@@ -8,7 +11,7 @@ export interface StreamOptions {
   messages: ChatMessage[]
   temperature?: number
   maxTokens?: number
-  reasoningEffort?: 'low' | 'medium' | 'high'
+  reasoningEffort?: ReasoningEffortValue
   enableWebSearch?: boolean
   onDelta: (delta: string) => void
   signal?: AbortSignal
@@ -17,9 +20,15 @@ export interface StreamOptions {
 export const streamResponse = async (opts: StreamOptions): Promise<void> => {
   const { apiKey, model, messages, temperature, maxTokens, reasoningEffort, enableWebSearch, onDelta, signal } = opts
 
-  // route claude models to anthropic client
-  if (model.startsWith('claude-')) {
+  const provider = getProviderForModel(model)
+  if (provider === 'anthropic') {
     return anthropicStream({ apiKey, model, messages, temperature, maxTokens, reasoningEffort, enableWebSearch, onDelta, signal })
+  }
+  if (provider === 'gemini') {
+    return geminiStream({ apiKey, model, messages, temperature, maxTokens, reasoningEffort, onDelta, signal })
+  }
+  if (provider === 'moonshot') {
+    return moonshotStream({ apiKey, model, messages, maxTokens, reasoningEffort, onDelta, signal })
   }
 
   // Convert ChatMessage[] to Responses API `input` format.
@@ -55,7 +64,7 @@ export const streamResponse = async (opts: StreamOptions): Promise<void> => {
   }
   if (typeof temperature === 'number') payload.temperature = temperature
   if (typeof maxTokens === 'number') payload.max_output_tokens = maxTokens
-  if (reasoningEffort && (model === 'gpt-5' || model.startsWith('o3') || model.startsWith('o1'))) {
+  if (reasoningEffort && (model.startsWith('gpt-5') || model.startsWith('o3') || model.startsWith('o1'))) {
     payload.reasoning = { effort: reasoningEffort }
   }
   if (enableWebSearch && supportsWebSearch(model)) {

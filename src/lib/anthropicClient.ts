@@ -1,4 +1,5 @@
 import type { ChatMessage } from './contextBuilder'
+import type { ReasoningEffortValue } from '../types'
 
 export interface StreamOptions {
   apiKey: string
@@ -6,7 +7,7 @@ export interface StreamOptions {
   messages: ChatMessage[]
   temperature?: number
   maxTokens?: number
-  reasoningEffort?: 'low' | 'medium' | 'high'
+  reasoningEffort?: ReasoningEffortValue
   enableWebSearch?: boolean
   onDelta: (delta: string) => void
   signal?: AbortSignal
@@ -66,11 +67,14 @@ const toAnthropicPayload = (messages: ChatMessage[]): { system?: string; message
   return { system, messages: out }
 }
 
-const mapReasoningBudget = (effort?: 'low' | 'medium' | 'high'): number | undefined => {
+const mapReasoningBudget = (effort?: ReasoningEffortValue): number | undefined => {
   if (!effort) return undefined
-  if (effort === 'low') return 1024
-  if (effort === 'medium') return 4096
-  if (effort === 'high') return 8192
+  if (effort === 'disabled' || effort === 'none') return undefined
+  if (effort === 'enabled') return 4096
+  if (effort === 'minimal' || effort === 'low') return 1024
+  if (effort === 'medium') return 2048
+  if (effort === 'high') return 4096
+  if (effort === 'xhigh') return 8192
   return undefined
 }
 
@@ -79,18 +83,26 @@ const anthropicBase = (): string => (import.meta && (import.meta as any).env && 
 export const streamResponse = async (opts: StreamOptions): Promise<void> => {
   const { apiKey, model, messages, temperature, maxTokens, reasoningEffort, enableWebSearch, onDelta, signal } = opts
   const { system, messages: anthropicMessages } = toAnthropicPayload(messages)
+  const requestedBudget = mapReasoningBudget(reasoningEffort)
+  const outputMaxTokensBase = typeof maxTokens === 'number' ? maxTokens : 8000
+  const outputMaxTokens = typeof requestedBudget === 'number' && outputMaxTokensBase <= requestedBudget
+    ? requestedBudget + 1
+    : outputMaxTokensBase
 
   const body: Record<string, any> = {
     model,
     messages: anthropicMessages,
     stream: true,
+    max_tokens: outputMaxTokens,
   }
   if (system) body.system = system
   if (typeof temperature === 'number') body.temperature = temperature
-  if (typeof maxTokens === 'number') body.max_tokens = maxTokens
-  const budget = mapReasoningBudget(reasoningEffort)
-  if (typeof budget === 'number' && budget > 0) {
-    body.thinking = { type: 'enabled', budget_tokens: budget }
+  if (typeof requestedBudget === 'number' && requestedBudget > 0) {
+    const maxAllowed = Math.max(0, outputMaxTokens - 1)
+    const budgetTokens = Math.min(requestedBudget, maxAllowed)
+    if (budgetTokens >= 1024) {
+      body.thinking = { type: 'enabled', budget_tokens: budgetTokens }
+    }
   }
   if (enableWebSearch) {
     // anthropic web search requires versioned tool type and a name

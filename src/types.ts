@@ -1,4 +1,5 @@
 export type Role = 'user' | 'assistant' | 'system'
+export type ReasoningEffortValue = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'none' | 'enabled' | 'disabled'
 
 export interface Session {
   readonly id: string
@@ -7,7 +8,7 @@ export interface Session {
   createdAt: number
   lastActiveAt: number
   temperature?: number
-  reasoningEffort?: 'low' | 'medium' | 'high'
+  reasoningEffort?: ReasoningEffortValue
   mainTurnsLimit?: number
   maxTokens?: number
 }
@@ -28,9 +29,13 @@ export interface Message {
 export interface Settings {
   apiKey?: string
   anthropicApiKey?: string
+  geminiApiKey?: string
+  moonshotApiKey?: string
   defaultModel?: string
   apiKeyEncrypted?: string
   anthropicApiKeyEncrypted?: string
+  geminiApiKeyEncrypted?: string
+  moonshotApiKeyEncrypted?: string
 }
 
 export interface UIState {

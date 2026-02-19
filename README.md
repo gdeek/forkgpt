@@ -16,11 +16,17 @@ A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a r
 
 ## Highlights
 - Reply Viewer: clean nesting, collapsible nodes, subtle indent guides.
-- Session settings: temperature slider and reasoning effort (`low` | `medium` | `high`) for reasoning models.
+- Session settings: temperature slider and model-aware reasoning controls (values depend on the selected model/provider).
 - Local persistence: your sessions live in your browser profile.
 - Safer keys: encrypt your API key at rest with a password; unlock per reload. The key stays in memory only after you unlock.
 - Streams model responses by default.
 - Supports Web Search, Attachments (including images and PDFs).
+
+## Supported Models
+- OpenAI: `gpt-5.2`, `gpt-5.2-codex`, `o3`
+- Anthropic: `claude-opus-4.6`, `claude-sonnet-4.6`
+- Google Gemini: `gemini-3-pro-preview`
+- Moonshot: `kimi-2.5` (API model `kimi-k2.5`)
 
 ## Privacy & Security
 - Where data lives: `localStorage` for chat data (per‑origin, per‑profile).
@@ -50,4 +56,4 @@ A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a r
 
 - Open http://localhost:5173
 
-- Click Settings to add your OpenAI/Anthropic API key. Set a strong password to encrypt it at rest.
+- Click Settings to add provider API keys (OpenAI, Anthropic, Gemini, Moonshot). Set a strong password to encrypt them at rest.

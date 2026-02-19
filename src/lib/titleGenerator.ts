@@ -1,7 +1,16 @@
+import { getProviderForModel } from './models'
+
 const anthropicBase = (): string => (import.meta && (import.meta as any).env && (import.meta as any).env.DEV ? '/anthropic' : 'https://api.anthropic.com')
 
+const fallbackTitle = (userQuestion: string): string => {
+  const words = userQuestion.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean)
+  const slice = words.slice(0, 6).join(' ').trim()
+  return slice.length > 0 ? slice.slice(0, 60) : 'New Session'
+}
+
 export const generateSessionTitle = async (apiKey: string, userQuestion: string, model: string): Promise<string> => {
-  if (model.startsWith('claude-')) {
+  const provider = getProviderForModel(model)
+  if (provider === 'anthropic') {
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       'x-api-key': apiKey,
@@ -34,6 +43,10 @@ export const generateSessionTitle = async (apiKey: string, userQuestion: string,
     return title ? title.slice(0, 60) : 'New Session'
   }
 
+  if (provider !== 'openai') {
+    return fallbackTitle(userQuestion)
+  }
+
   const res = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
@@ -41,7 +54,7 @@ export const generateSessionTitle = async (apiKey: string, userQuestion: string,
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
+      model,
       input: [
         { role: 'system', content: [{ type: 'input_text', text: 'You generate concise chat titles. Respond with a 3-6 word title without punctuation.' }] },
         { role: 'user', content: [{ type: 'input_text', text: `Create a very short title for this question:\n\n${userQuestion}` }] },

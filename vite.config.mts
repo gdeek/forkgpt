@@ -11,6 +11,18 @@ export default defineConfig({
         secure: true,
         rewrite: (p: string) => p.replace(/^\/anthropic/, ''),
       },
+      '/gemini': {
+        target: 'https://generativelanguage.googleapis.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p: string) => p.replace(/^\/gemini/, ''),
+      },
+      '/moonshot': {
+        target: 'https://api.moonshot.ai',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p: string) => p.replace(/^\/moonshot/, ''),
+      },
     },
   },
 })
