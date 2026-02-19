@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
 import { nanoid } from 'nanoid'
-import type { Message, Session, Settings, UIState } from '../types'
+import type { Message, ReasoningEffortValue, Session, Settings, UIState } from '../types'
 import { loadMessages, loadSessions, loadSettings, loadUI, saveMessages, saveSessions, saveSettings, saveUI } from '../lib/storage'
 
 type State = {
@@ -18,7 +18,7 @@ type Action =
   | { type: 'touchSession'; id: string }
   | { type: 'setSystemPrompt'; id: string; prompt: string }
   | { type: 'setSessionTemperature'; id: string; temperature: number }
-  | { type: 'setSessionReasoningEffort'; id: string; effort: 'low' | 'medium' | 'high' }
+  | { type: 'setSessionReasoningEffort'; id: string; effort: ReasoningEffortValue }
   | { type: 'setSessionMainTurnsLimit'; id: string; value: number }
   | { type: 'setSessionMaxTokens'; id: string; value: number }
   | { type: 'addMessage'; message: Message }

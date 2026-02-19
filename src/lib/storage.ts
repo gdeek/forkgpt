@@ -44,7 +44,14 @@ export const saveSettings = (settings: Settings) => {
   try {
     if (typeof localStorage !== 'undefined') {
       // Never persist volatile secrets or accidental password fields
-      const { apiKey: _volatileApiKey, anthropicApiKey: _volatileAnthropicKey, /* @ts-ignore defensive */ password: _pwd, ...rest } = settings as any
+      const {
+        apiKey: _volatileApiKey,
+        anthropicApiKey: _volatileAnthropicKey,
+        geminiApiKey: _volatileGeminiKey,
+        moonshotApiKey: _volatileMoonshotKey,
+        /* @ts-ignore defensive */ password: _pwd,
+        ...rest
+      } = settings as any
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(rest))
     }
   } catch {}

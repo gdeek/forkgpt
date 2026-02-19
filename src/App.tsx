@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react'
 import { AppProvider, useApp } from './state/AppContext'
 import { nanoid } from 'nanoid'
-import type { Message, Session } from './types'
+import type { Message, ReasoningEffortValue, Session } from './types'
 import { buildMainContext, buildReplyContext } from './lib/contextBuilder'
 import { streamResponse } from './lib/openaiClient'
-import { UI_MODELS, mapUiModelToApi, supportsReasoningEffort, supportsTemperature, supportsImages, supportsWebSearch } from './lib/models'
+import { UI_MODELS, getProviderForModel, getReasoningEffortForModel, getReasoningEffortOptions, mapUiModelToApi, supportsImages, supportsReasoningEffort, supportsTemperature, supportsWebSearch } from './lib/models'
 import { generateSessionTitle } from './lib/titleGenerator'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { encryptString, decryptString } from './lib/crypto'
@@ -74,17 +74,26 @@ const AppInner: React.FC = () => {
   }, [state.sessions.length])
   const selectSession = (id: string) => dispatch({ type: 'selectSession', id })
 
-  const getApiKeyForModel = (m: string): { key?: string; provider: 'openai' | 'anthropic' } => {
-    const id = mapUiModelToApi(m)
-    if (id.startsWith('claude-')) return { key: state.settings.anthropicApiKey?.trim(), provider: 'anthropic' }
-    return { key: state.settings.apiKey?.trim(), provider: 'openai' }
+  const providerName = (provider: 'openai' | 'anthropic' | 'gemini' | 'moonshot'): string => {
+    if (provider === 'anthropic') return 'Anthropic'
+    if (provider === 'gemini') return 'Google Gemini'
+    if (provider === 'moonshot') return 'Moonshot'
+    return 'OpenAI'
+  }
+
+  const getApiKeyForModel = (m: string): { key?: string; provider: 'openai' | 'anthropic' | 'gemini' | 'moonshot' } => {
+    const provider = getProviderForModel(mapUiModelToApi(m))
+    if (provider === 'anthropic') return { key: state.settings.anthropicApiKey?.trim(), provider }
+    if (provider === 'gemini') return { key: state.settings.geminiApiKey?.trim(), provider }
+    if (provider === 'moonshot') return { key: state.settings.moonshotApiKey?.trim(), provider }
+    return { key: state.settings.apiKey?.trim(), provider }
   }
 
   const onSendMain = async () => {
     if (!session || !composer.trim()) return
     const { key, provider } = getApiKeyForModel(model)
     if (!key) {
-      alert(provider === 'anthropic' ? 'Set your Anthropic API key in Settings' : 'Set your OpenAI API key in Settings')
+      alert(`Set your ${providerName(provider)} API key in Settings`)
       return
     }
     // Limits
@@ -142,7 +151,7 @@ const AppInner: React.FC = () => {
           model: mapUiModelToApi(model),
           messages: [...ctx, { role: 'user', content: [summaryPrompt, ...largeParts] }],
           temperature: supportsTemperature(model) ? session?.temperature : undefined,
-          reasoningEffort: supportsReasoningEffort(model) ? session?.reasoningEffort : undefined,
+          reasoningEffort: supportsReasoningEffort(model) ? getReasoningEffortForModel(model, session?.reasoningEffort) : undefined,
           maxTokens: Math.min(1000, session?.maxTokens ?? 4000),
           enableWebSearch: webSearch && supportsWebSearch(model),
           onDelta: (delta) => {/* swallow - we will use summary only internally */},
@@ -164,7 +173,7 @@ const AppInner: React.FC = () => {
         model: mapUiModelToApi(model),
         messages: [...ctx, { role: 'user', content: parts }],
         temperature: supportsTemperature(model) ? session?.temperature : undefined,
-        reasoningEffort: supportsReasoningEffort(model) ? session?.reasoningEffort : undefined,
+        reasoningEffort: supportsReasoningEffort(model) ? getReasoningEffortForModel(model, session?.reasoningEffort) : undefined,
         maxTokens: session?.maxTokens,
         enableWebSearch: webSearch && supportsWebSearch(model),
         onDelta: (delta) => dispatch({ type: 'updateMessage', id: assistantMsg.id, patch: { content: (assistantMsg.content += delta) } }),
@@ -299,6 +308,8 @@ const AppInner: React.FC = () => {
   const sessionId = state.ui.activeSessionId ?? state.sessions[0]?.id
   const session = state.sessions.find(s => s.id === sessionId)
   const [open, setOpen] = useState(true)
+  const reasoningOptions = getReasoningEffortOptions(currentModel)
+  const reasoningValue = getReasoningEffortForModel(currentModel, session?.reasoningEffort)
   if (!session) return null
   return (
     <div>
@@ -326,12 +337,12 @@ const AppInner: React.FC = () => {
                 <span className="whitespace-nowrap">Reasoning effort</span>
                 <select
                   className="border rounded px-2 py-1 bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700"
-                  value={session.reasoningEffort ?? 'medium'}
-                  onChange={e=>dispatch({ type: 'setSessionReasoningEffort', id: session.id, effort: e.target.value as any })}
+                  value={reasoningValue ?? reasoningOptions[0] ?? ''}
+                  onChange={e=>dispatch({ type: 'setSessionReasoningEffort', id: session.id, effort: e.target.value as ReasoningEffortValue })}
                 >
-                  <option value="low">low</option>
-                  <option value="medium">medium</option>
-                  <option value="high">high</option>
+                  {reasoningOptions.map(option => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
                 </select>
               </label>
             )}
@@ -420,6 +431,22 @@ const SettingsButton: React.FC = () => {
                 unlockedField="anthropicApiKey"
                 encryptedField="anthropicApiKeyEncrypted"
                 placeholder="sk-ant-..."
+                onClose={()=>setOpen(false)}
+              />
+              <div className="border-t dark:border-gray-700" />
+              <KeySection
+                title="Google Gemini"
+                unlockedField="geminiApiKey"
+                encryptedField="geminiApiKeyEncrypted"
+                placeholder="AIza..."
+                onClose={()=>setOpen(false)}
+              />
+              <div className="border-t dark:border-gray-700" />
+              <KeySection
+                title="Moonshot"
+                unlockedField="moonshotApiKey"
+                encryptedField="moonshotApiKeyEncrypted"
+                placeholder="sk-..."
                 onClose={()=>setOpen(false)}
               />
             </div>
@@ -800,11 +827,8 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
 
   const onSendReply = async (parentId?: string) => {
     if (!replyText.trim()) return
-    // key is checked against the active model of this branch (assistant anchor)
-    const activeModel = mapUiModelToApi(anchor.model ?? 'gpt-4o')
-    const needsAnthropic = activeModel.startsWith('claude-')
-    const key = needsAnthropic ? state.settings.anthropicApiKey : state.settings.apiKey
-    if (!key) { alert(needsAnthropic ? 'Set your Anthropic API key in Settings' : 'Set your OpenAI API key in Settings'); return }
+    const { key, provider } = getApiKeyForModel(anchor.model ?? 'gpt-5.2')
+    if (!key) { alert(`Set your ${providerName(provider)} API key in Settings`); return }
     // Guard: replies should target assistant messages. If a user node was passed,
     // walk up to the nearest assistant ancestor within this thread; otherwise fall back to root.
     if (parentId) {
@@ -832,7 +856,7 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
     setReplyText('')
     setPendingFiles([])
     const assistant: Message = {
-      id: nanoid(), sessionId: session.id, role: 'assistant', content: '', includeInContext: false, createdAt: Date.now(), anchorMessageId: anchorId, parentId: user.id, model: anchor.model ?? 'gpt-4o',
+      id: nanoid(), sessionId: session.id, role: 'assistant', content: '', includeInContext: false, createdAt: Date.now(), anchorMessageId: anchorId, parentId: user.id, model: anchor.model ?? 'gpt-5.2',
     }
     dispatch({ type: 'addMessage', message: assistant })
 
@@ -859,7 +883,7 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
           model: mapUiModelToApi(assistant.model!),
           messages: [...ctx, { role: 'user', content: [summaryPrompt, ...largeParts] }],
           temperature: supportsTemperature(assistant.model!) ? session?.temperature : undefined,
-          reasoningEffort: supportsReasoningEffort(assistant.model!) ? session?.reasoningEffort : undefined,
+          reasoningEffort: supportsReasoningEffort(assistant.model!) ? getReasoningEffortForModel(assistant.model!, session?.reasoningEffort) : undefined,
           maxTokens: Math.min(1000, session?.maxTokens ?? 4000),
           enableWebSearch: replySearch && supportsWebSearch(assistant.model || ''),
           onDelta: ()=>{},
@@ -879,7 +903,7 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
         model: mapUiModelToApi(assistant.model!),
         messages: [...ctx, { role: 'user', content: parts }],
         temperature: supportsTemperature(assistant.model!) ? session?.temperature : undefined,
-        reasoningEffort: supportsReasoningEffort(assistant.model!) ? session?.reasoningEffort : undefined,
+        reasoningEffort: supportsReasoningEffort(assistant.model!) ? getReasoningEffortForModel(assistant.model!, session?.reasoningEffort) : undefined,
         maxTokens: session?.maxTokens,
         enableWebSearch: replySearch && supportsWebSearch(assistant.model || ''),
         onDelta: (delta) => dispatch({ type: 'updateMessage', id: assistant.id, patch: { content: (assistant.content += delta) } }),
@@ -980,8 +1004,8 @@ export default App
 // reusable key management panel for providers
 const KeySection: React.FC<{
   title: string
-  unlockedField: 'apiKey' | 'anthropicApiKey'
-  encryptedField: 'apiKeyEncrypted' | 'anthropicApiKeyEncrypted'
+  unlockedField: 'apiKey' | 'anthropicApiKey' | 'geminiApiKey' | 'moonshotApiKey'
+  encryptedField: 'apiKeyEncrypted' | 'anthropicApiKeyEncrypted' | 'geminiApiKeyEncrypted' | 'moonshotApiKeyEncrypted'
   placeholder: string
   onClose: () => void
 }> = ({ title, unlockedField, encryptedField, placeholder, onClose }) => {

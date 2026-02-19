@@ -1,69 +1,191 @@
-export type UiModelId =
-  | 'gpt-4o'
-  | 'gpt-5'
-  | 'o3'
-  | 'claude-sonnet-4-5-20250929'
-  | 'claude-haiku-4-5-20251001'
-  | 'claude-opus-4-1-20250805'
+import type { ReasoningEffortValue } from '../types'
 
-export const UI_MODELS: { id: UiModelId; label: string }[] = [
-  { id: 'gpt-4o', label: 'gpt-4o' },
-  { id: 'gpt-5', label: 'gpt-5' },
-  { id: 'o3', label: 'o3' },
-  // friendly labels for claude, ids are the anthropic api ids
-  { id: 'claude-sonnet-4-5-20250929', label: 'claude-sonnet-4.5' },
-  { id: 'claude-haiku-4-5-20251001', label: 'claude-haiku-4.5' },
-  { id: 'claude-opus-4-1-20250805', label: 'claude-opus-4.1' },
+export type ModelProvider = 'openai' | 'anthropic' | 'gemini' | 'moonshot'
+
+export type UiModelId =
+  | 'gpt-5.2'
+  | 'gpt-5.2-codex'
+  | 'o3'
+  | 'claude-opus-4.6'
+  | 'claude-sonnet-4.6'
+  | 'gemini-3-pro-preview'
+  | 'kimi-2.5'
+
+type ModelConfig = {
+  id: UiModelId
+  label: string
+  apiModel: string
+  provider: ModelProvider
+  reasoningOptions: ReasoningEffortValue[]
+  defaultReasoning: ReasoningEffortValue
+  temperature: boolean
+  images: boolean
+  webSearch: boolean
+}
+
+const MODEL_CATALOG: ModelConfig[] = [
+  {
+    id: 'gpt-5.2',
+    label: 'gpt-5.2',
+    apiModel: 'gpt-5.2',
+    provider: 'openai',
+    reasoningOptions: ['medium', 'high', 'xhigh'],
+    defaultReasoning: 'medium',
+    temperature: false,
+    images: true,
+    webSearch: true,
+  },
+  {
+    id: 'gpt-5.2-codex',
+    label: 'gpt-5.2-codex',
+    apiModel: 'gpt-5.2-codex',
+    provider: 'openai',
+    reasoningOptions: ['medium', 'high', 'xhigh'],
+    defaultReasoning: 'medium',
+    temperature: false,
+    images: false,
+    webSearch: false,
+  },
+  {
+    id: 'o3',
+    label: 'o3',
+    apiModel: 'o3',
+    provider: 'openai',
+    reasoningOptions: ['low', 'medium', 'high'],
+    defaultReasoning: 'medium',
+    temperature: false,
+    images: true,
+    webSearch: true,
+  },
+  {
+    id: 'claude-opus-4.6',
+    label: 'claude-opus-4.6',
+    apiModel: 'claude-opus-4-6',
+    provider: 'anthropic',
+    reasoningOptions: ['medium', 'high', 'xhigh'],
+    defaultReasoning: 'medium',
+    temperature: true,
+    images: true,
+    webSearch: true,
+  },
+  {
+    id: 'claude-sonnet-4.6',
+    label: 'claude-sonnet-4.6',
+    apiModel: 'claude-sonnet-4-6',
+    provider: 'anthropic',
+    reasoningOptions: ['medium', 'high', 'xhigh'],
+    defaultReasoning: 'medium',
+    temperature: true,
+    images: true,
+    webSearch: true,
+  },
+  {
+    id: 'gemini-3-pro-preview',
+    label: 'gemini-3-pro-preview',
+    apiModel: 'gemini-3-pro-preview',
+    provider: 'gemini',
+    reasoningOptions: ['low', 'high'],
+    defaultReasoning: 'high',
+    temperature: true,
+    images: false,
+    webSearch: false,
+  },
+  {
+    id: 'kimi-2.5',
+    label: 'kimi-2.5',
+    apiModel: 'kimi-k2.5',
+    provider: 'moonshot',
+    reasoningOptions: ['enabled', 'disabled'],
+    defaultReasoning: 'enabled',
+    temperature: false,
+    images: false,
+    webSearch: false,
+  },
 ]
 
-export const mapUiModelToApi = (id: UiModelId | string): string => {
-  switch (id) {
-    case 'gpt-4o':
-      return 'gpt-4o'
-    case 'gpt-5':
-      return 'gpt-5'
-    case 'o3':
-      return 'o3'
-    case 'claude-sonnet-4-5-20250929':
-      return 'claude-sonnet-4-5-20250929'
-    case 'claude-haiku-4-5-20251001':
-      return 'claude-haiku-4-5-20251001'
-    case 'claude-opus-4-1-20250805':
-      return 'claude-opus-4-1-20250805'
-    default:
-      return id
-  }
+export const UI_MODELS: { id: UiModelId; label: string }[] = MODEL_CATALOG.map(({ id, label }) => ({ id, label }))
+
+const normalizeReasoning = (effort?: string): ReasoningEffortValue | undefined => {
+  if (!effort) return undefined
+  if (effort === 'x-high' || effort === 'x_high') return 'xhigh'
+  if (effort === 'on') return 'enabled'
+  if (effort === 'off') return 'disabled'
+  return effort as ReasoningEffortValue
 }
 
-// Helper function to check if a model supports reasoning effort
+const configFor = (model: string): ModelConfig | undefined => {
+  const direct = MODEL_CATALOG.find(m => m.id === model || m.apiModel === model)
+  if (direct) return direct
+
+  if (model.startsWith('claude-opus-4-6')) return MODEL_CATALOG.find(m => m.id === 'claude-opus-4.6')
+  if (model.startsWith('claude-sonnet-4-6')) return MODEL_CATALOG.find(m => m.id === 'claude-sonnet-4.6')
+  if (model.startsWith('gpt-5.2-codex')) return MODEL_CATALOG.find(m => m.id === 'gpt-5.2-codex')
+  if (model.startsWith('gpt-5.2')) return MODEL_CATALOG.find(m => m.id === 'gpt-5.2')
+  if (model.startsWith('o3')) return MODEL_CATALOG.find(m => m.id === 'o3')
+  if (model.startsWith('gemini-3-pro')) return MODEL_CATALOG.find(m => m.id === 'gemini-3-pro-preview')
+  if (model.startsWith('kimi-k2.5')) return MODEL_CATALOG.find(m => m.id === 'kimi-2.5')
+  return undefined
+}
+
+export const mapUiModelToApi = (id: UiModelId | string): string => configFor(id)?.apiModel ?? id
+
+export const getProviderForModel = (model: string): ModelProvider => {
+  const cfg = configFor(model)
+  if (cfg) return cfg.provider
+  if (model.startsWith('claude-')) return 'anthropic'
+  if (model.startsWith('gemini-')) return 'gemini'
+  if (model.startsWith('kimi-')) return 'moonshot'
+  return 'openai'
+}
+
 export const supportsReasoningEffort = (model: string): boolean => {
+  const cfg = configFor(model)
+  if (cfg) return cfg.reasoningOptions.length > 0
   const apiModel = mapUiModelToApi(model)
-  // o1-series, o3-series, gpt-5 and claude 4.x support reasoning/thinking parameters
-  return apiModel.startsWith('o1') || apiModel.startsWith('o3') || apiModel === 'gpt-5' || apiModel.startsWith('claude-')
+  return apiModel.startsWith('o1') || apiModel.startsWith('o3') || apiModel.startsWith('gpt-5') || apiModel.startsWith('claude-')
 }
 
-// Helper function to check if a model supports temperature
+export const getReasoningEffortOptions = (model: string): ReasoningEffortValue[] => {
+  const cfg = configFor(model)
+  if (cfg) return cfg.reasoningOptions
+  return ['low', 'medium', 'high']
+}
+
+export const getDefaultReasoningEffort = (model: string): ReasoningEffortValue | undefined => {
+  const cfg = configFor(model)
+  return cfg?.defaultReasoning
+}
+
+export const getReasoningEffortForModel = (model: string, effort?: string): ReasoningEffortValue | undefined => {
+  if (!supportsReasoningEffort(model)) return undefined
+  const options = getReasoningEffortOptions(model)
+  const normalized = normalizeReasoning(effort)
+  if (normalized && options.includes(normalized)) return normalized
+  if (normalized === 'xhigh' && options.includes('high')) return 'high'
+  return getDefaultReasoningEffort(model) ?? options[0]
+}
+
 export const supportsTemperature = (model: string): boolean => {
+  const cfg = configFor(model)
+  if (cfg) return cfg.temperature
   const apiModel = mapUiModelToApi(model)
-  // o1-series, o3-series, and gpt-5 models do NOT support temperature
-  // Standard models like gpt-4o and all claude models support temperature
-  return (!apiModel.startsWith('o1') && !apiModel.startsWith('o3') && apiModel !== 'gpt-5') || apiModel.startsWith('claude-')
+  return (!apiModel.startsWith('o1') && !apiModel.startsWith('o3') && !apiModel.startsWith('gpt-5')) || apiModel.startsWith('claude-')
 }
 
-// Helper for multimodal image support
 export const supportsImages = (model: string): boolean => {
+  const cfg = configFor(model)
+  if (cfg) return cfg.images
   const apiModel = mapUiModelToApi(model)
-  // gpt-4o, gpt-5, o3 and claude 4.x support images
-  return apiModel === 'gpt-4o' || apiModel === 'gpt-5' || apiModel.startsWith('o3') || apiModel.startsWith('claude-')
+  return apiModel === 'gpt-4o' || apiModel.startsWith('gpt-5') || apiModel.startsWith('o3') || apiModel.startsWith('claude-')
 }
 
-export type WebSearchApiStyle = 'responses' | 'chat-search-preview' | 'none'
+export type WebSearchApiStyle = 'responses' | 'none'
 
-// Returns whether a model supports first‑party Web Search and how to enable it
 export const webSearchSupport = (model: string): { supported: boolean; style: WebSearchApiStyle } => {
+  const cfg = configFor(model)
+  if (cfg) return { supported: cfg.webSearch, style: cfg.webSearch ? 'responses' : 'none' }
   const apiModel = mapUiModelToApi(model)
-  // Our UI models (gpt-4o, gpt-5, o3) support web search via responses api; claude supports web search via anthropic tools
-  if (apiModel === 'gpt-4o' || apiModel === 'gpt-5' || apiModel.startsWith('o3') || apiModel.startsWith('claude-')) {
+  if (apiModel === 'gpt-4o' || apiModel.startsWith('gpt-5') || apiModel.startsWith('o3') || apiModel.startsWith('claude-')) {
     return { supported: true, style: 'responses' }
   }
   return { supported: false, style: 'none' }
