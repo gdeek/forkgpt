@@ -25,8 +25,8 @@ A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a r
 ## Supported Models
 - OpenAI: `gpt-5.2`, `gpt-5.2-codex`, `o3`
 - Anthropic: `claude-opus-4.6`, `claude-sonnet-4.6`
-- Google Gemini: `gemini-3-pro-preview`
-- Moonshot: `kimi-2.5` (API model `kimi-k2.5`)
+- Google Gemini: `gemini-3.1-pro-preview`
+- Moonshot: `kimi-k2.5`
 
 ## Privacy & Security
 - Where data lives: `localStorage` for chat data (per‑origin, per‑profile).

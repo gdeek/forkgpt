@@ -15,11 +15,12 @@ export interface StreamOptions {
 
 const geminiBase = (): string => ((import.meta as any)?.env?.DEV ? '/gemini/v1beta/openai' : 'https://generativelanguage.googleapis.com/v1beta/openai')
 
-const mapReasoningEffort = (effort?: ReasoningEffortValue): 'low' | 'high' | undefined => {
+const mapReasoningEffort = (effort?: ReasoningEffortValue): 'low' | 'medium' | 'high' | undefined => {
   if (!effort) return undefined
+  if (effort === 'minimal') return 'low'
+  if (effort === 'medium') return 'medium'
   if (effort === 'high' || effort === 'xhigh') return 'high'
-  if (effort === 'low' || effort === 'minimal') return 'low'
-  if (effort === 'medium') return 'high'
+  if (effort === 'low') return 'low'
   return undefined
 }
 

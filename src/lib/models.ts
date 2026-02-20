@@ -8,8 +8,8 @@ export type UiModelId =
   | 'o3'
   | 'claude-opus-4.6'
   | 'claude-sonnet-4.6'
-  | 'gemini-3-pro-preview'
-  | 'kimi-2.5'
+  | 'gemini-3.1-pro-preview'
+  | 'kimi-k2.5'
 
 type ModelConfig = {
   id: UiModelId
@@ -80,19 +80,19 @@ const MODEL_CATALOG: ModelConfig[] = [
     webSearch: true,
   },
   {
-    id: 'gemini-3-pro-preview',
-    label: 'gemini-3-pro-preview',
-    apiModel: 'gemini-3-pro-preview',
+    id: 'gemini-3.1-pro-preview',
+    label: 'gemini-3.1-pro-preview',
+    apiModel: 'gemini-3.1-pro-preview',
     provider: 'gemini',
-    reasoningOptions: ['low', 'high'],
+    reasoningOptions: ['low', 'medium', 'high'],
     defaultReasoning: 'high',
     temperature: true,
     images: false,
     webSearch: false,
   },
   {
-    id: 'kimi-2.5',
-    label: 'kimi-2.5',
+    id: 'kimi-k2.5',
+    label: 'kimi-k2.5',
     apiModel: 'kimi-k2.5',
     provider: 'moonshot',
     reasoningOptions: ['enabled', 'disabled'],
@@ -122,8 +122,8 @@ const configFor = (model: string): ModelConfig | undefined => {
   if (model.startsWith('gpt-5.2-codex')) return MODEL_CATALOG.find(m => m.id === 'gpt-5.2-codex')
   if (model.startsWith('gpt-5.2')) return MODEL_CATALOG.find(m => m.id === 'gpt-5.2')
   if (model.startsWith('o3')) return MODEL_CATALOG.find(m => m.id === 'o3')
-  if (model.startsWith('gemini-3-pro')) return MODEL_CATALOG.find(m => m.id === 'gemini-3-pro-preview')
-  if (model.startsWith('kimi-k2.5')) return MODEL_CATALOG.find(m => m.id === 'kimi-2.5')
+  if (model.startsWith('gemini-3.1-pro')) return MODEL_CATALOG.find(m => m.id === 'gemini-3.1-pro-preview')
+  if (model.startsWith('kimi-k2.5')) return MODEL_CATALOG.find(m => m.id === 'kimi-k2.5')
   return undefined
 }
 
@@ -162,6 +162,7 @@ export const getReasoningEffortForModel = (model: string, effort?: string): Reas
   const normalized = normalizeReasoning(effort)
   if (normalized && options.includes(normalized)) return normalized
   if (normalized === 'xhigh' && options.includes('high')) return 'high'
+  if (normalized === 'minimal' && options.includes('low')) return 'low'
   return getDefaultReasoningEffort(model) ?? options[0]
 }
 
