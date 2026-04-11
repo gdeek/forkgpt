@@ -10,9 +10,24 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { encryptString, decryptString } from './lib/crypto'
 import { AttachmentPicker } from './components/AttachmentPicker'
 import { MAX_ATTACHMENTS, MAX_TOTAL_BYTES, storeNewAttachment, prepareAttachmentParts, LARGE_FILE_SUMMARY_THRESHOLD, sniffKind } from './lib/attachments'
-import type { AttachmentMeta } from './types'
+import type { AttachmentMeta, Settings } from './types'
 
 const MODELS = UI_MODELS
+
+const providerName = (provider: 'openai' | 'anthropic' | 'gemini' | 'moonshot'): string => {
+  if (provider === 'anthropic') return 'Anthropic'
+  if (provider === 'gemini') return 'Google Gemini'
+  if (provider === 'moonshot') return 'Moonshot'
+  return 'OpenAI'
+}
+
+const getApiKeyForModel = (m: string, settings: Settings): { key?: string; provider: 'openai' | 'anthropic' | 'gemini' | 'moonshot' } => {
+  const provider = getProviderForModel(mapUiModelToApi(m))
+  if (provider === 'anthropic') return { key: settings.anthropicApiKey?.trim(), provider }
+  if (provider === 'gemini') return { key: settings.geminiApiKey?.trim(), provider }
+  if (provider === 'moonshot') return { key: settings.moonshotApiKey?.trim(), provider }
+  return { key: settings.apiKey?.trim(), provider }
+}
 
 // Utility: truncate text to a maximum number of characters with ellipsis.
 const truncateText = (text: string, max = 20): string => {
@@ -74,24 +89,9 @@ const AppInner: React.FC = () => {
   }, [state.sessions.length])
   const selectSession = (id: string) => dispatch({ type: 'selectSession', id })
 
-  const providerName = (provider: 'openai' | 'anthropic' | 'gemini' | 'moonshot'): string => {
-    if (provider === 'anthropic') return 'Anthropic'
-    if (provider === 'gemini') return 'Google Gemini'
-    if (provider === 'moonshot') return 'Moonshot'
-    return 'OpenAI'
-  }
-
-  const getApiKeyForModel = (m: string): { key?: string; provider: 'openai' | 'anthropic' | 'gemini' | 'moonshot' } => {
-    const provider = getProviderForModel(mapUiModelToApi(m))
-    if (provider === 'anthropic') return { key: state.settings.anthropicApiKey?.trim(), provider }
-    if (provider === 'gemini') return { key: state.settings.geminiApiKey?.trim(), provider }
-    if (provider === 'moonshot') return { key: state.settings.moonshotApiKey?.trim(), provider }
-    return { key: state.settings.apiKey?.trim(), provider }
-  }
-
   const onSendMain = async () => {
     if (!session || !composer.trim()) return
-    const { key, provider } = getApiKeyForModel(model)
+    const { key, provider } = getApiKeyForModel(model, state.settings)
     if (!key) {
       alert(`Set your ${providerName(provider)} API key in Settings`)
       return
@@ -147,7 +147,7 @@ const AppInner: React.FC = () => {
         for (const m of largeMetas) largeParts.push(...await prepareAttachmentParts(userMsg.id, m))
         const summaryPrompt = { type: 'text', text: 'Summarize the following file(s) concisely (≤ 800 tokens), preserving structure, key entities, numbers, and code blocks where relevant. Output only the summary.' }
         await streamResponse({
-          apiKey: getApiKeyForModel(model).key!,
+          apiKey: getApiKeyForModel(model, state.settings).key!,
           model: mapUiModelToApi(model),
           messages: [...ctx, { role: 'user', content: [summaryPrompt, ...largeParts] }],
           temperature: supportsTemperature(model) ? session?.temperature : undefined,
@@ -169,7 +169,7 @@ const AppInner: React.FC = () => {
       parts.push({ type: 'text', text: userMsg.content })
 
       await streamResponse({
-        apiKey: getApiKeyForModel(model).key!,
+        apiKey: getApiKeyForModel(model, state.settings).key!,
         model: mapUiModelToApi(model),
         messages: [...ctx, { role: 'user', content: parts }],
         temperature: supportsTemperature(model) ? session?.temperature : undefined,
@@ -189,7 +189,7 @@ const AppInner: React.FC = () => {
     // Generate session title after first exchange
     if (isFirstMain) {
       try {
-        const { key } = getApiKeyForModel(model)
+        const { key } = getApiKeyForModel(model, state.settings)
         if (key) {
           const title = await generateSessionTitle(key, userMsg.content, mapUiModelToApi(model))
           dispatch({ type: 'renameSession', id: session.id, title })
@@ -827,7 +827,7 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
 
   const onSendReply = async (parentId?: string) => {
     if (!replyText.trim()) return
-    const { key, provider } = getApiKeyForModel(anchor.model ?? 'gpt-5.2')
+    const { key, provider } = getApiKeyForModel(anchor.model ?? 'gpt-5.2', state.settings)
     if (!key) { alert(`Set your ${providerName(provider)} API key in Settings`); return }
     // Guard: replies should target assistant messages. If a user node was passed,
     // walk up to the nearest assistant ancestor within this thread; otherwise fall back to root.
