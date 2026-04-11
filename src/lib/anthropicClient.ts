@@ -114,9 +114,8 @@ export const streamResponse = async (opts: StreamOptions): Promise<void> => {
     'x-api-key': apiKey,
     'Authorization': `Bearer ${apiKey}`,
     'anthropic-version': '2023-06-01',
+    'anthropic-dangerous-direct-browser-access': 'true',
   }
-  // allow browser/dev requests explicitly when hitting anthropic from the browser via proxy
-  if ((import.meta as any)?.env?.DEV) headers['anthropic-dangerous-direct-browser-access'] = 'true'
 
   const res = await fetch(`${anthropicBase()}/v1/messages`, {
     method: 'POST',
