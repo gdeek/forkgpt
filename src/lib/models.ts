@@ -4,7 +4,6 @@ export type ModelProvider = 'openai' | 'anthropic' | 'gemini' | 'baseten' | 'uns
 export type ModelCompany = 'OpenAI' | 'Anthropic' | 'Google' | 'Moonshot AI' | 'Z.AI' | 'DeepSeek'
 
 export type UiModelId =
-  | 'gpt-5.2-codex'
   | 'o3'
   | 'gpt-5.6-sol'
   | 'gpt-5.6-luna'
@@ -30,18 +29,6 @@ type ModelConfig = {
 }
 
 const MODEL_CATALOG: ModelConfig[] = [
-  {
-    id: 'gpt-5.2-codex',
-    label: 'gpt-5.2-codex',
-    company: 'OpenAI',
-    apiModel: 'gpt-5.2-codex',
-    provider: 'openai',
-    reasoningOptions: ['medium', 'high', 'xhigh'],
-    defaultReasoning: 'medium',
-    temperature: false,
-    images: false,
-    webSearch: false,
-  },
   {
     id: 'o3',
     label: 'o3',
@@ -189,7 +176,6 @@ const configFor = (model: string): ModelConfig | undefined => {
   if (model.startsWith('claude-sonnet-5')) return MODEL_CATALOG.find(m => m.id === 'claude-sonnet-5')
   if (model.startsWith('gpt-5.6-sol')) return MODEL_CATALOG.find(m => m.id === 'gpt-5.6-sol')
   if (model.startsWith('gpt-5.6-luna')) return MODEL_CATALOG.find(m => m.id === 'gpt-5.6-luna')
-  if (model.startsWith('gpt-5.2-codex')) return MODEL_CATALOG.find(m => m.id === 'gpt-5.2-codex')
   if (model.startsWith('o3')) return MODEL_CATALOG.find(m => m.id === 'o3')
   if (model.startsWith('gemini-3.6-flash')) return MODEL_CATALOG.find(m => m.id === 'gemini-3.6-flash')
   if (model.startsWith('gemini-3.1-pro')) return MODEL_CATALOG.find(m => m.id === 'gemini-3.1-pro-preview')

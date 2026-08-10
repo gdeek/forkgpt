@@ -12,7 +12,6 @@ import {
 describe('models', () => {
   test('exposes the expected model list', () => {
     expect(UI_MODELS.map(m => m.id)).toEqual([
-      'gpt-5.2-codex',
       'o3',
       'gpt-5.6-sol',
       'gpt-5.6-luna',
@@ -44,7 +43,6 @@ describe('models', () => {
   })
 
   test('returns model specific reasoning options', () => {
-    expect(getReasoningEffortOptions('gpt-5.2-codex')).toEqual(['medium', 'high', 'xhigh'])
     expect(getReasoningEffortOptions('o3')).toEqual(['low', 'medium', 'high'])
     expect(getReasoningEffortOptions('gpt-5.6-sol')).toEqual(['none', 'low', 'medium', 'high', 'xhigh', 'max'])
     expect(getReasoningEffortOptions('gpt-5.6-luna')).toEqual(['none', 'low', 'medium', 'high', 'xhigh', 'max'])

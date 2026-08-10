@@ -23,7 +23,7 @@ A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a r
 - Supports Web Search, Attachments (including images and PDFs).
 
 ## Supported Models
-- OpenAI: `gpt-5.2-codex`, `o3`, `gpt-5.6-sol`, `gpt-5.6-luna`
+- OpenAI: `o3`, `gpt-5.6-sol`, `gpt-5.6-luna`
 - Anthropic: `claude-opus-5`, `claude-sonnet-5`
 - Google: `gemini-3.1-pro-preview`, `gemini-3.6-flash`
 - Moonshot AI via Baseten: `kimi-k3`
