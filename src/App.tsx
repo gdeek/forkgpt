@@ -418,48 +418,52 @@ const SettingsButton: React.FC = () => {
     <>
       <button className="px-2 py-1 border rounded" onClick={()=>setOpen(true)}>Settings</button>
       {open && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
-          <div className="bg-white dark:bg-gray-900 dark:text-gray-100 rounded border dark:border-gray-700 p-4 w-[460px]" role="dialog" aria-modal="true" aria-label="Settings">
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-semibold">Settings</div>
-              <button
-                className="px-2 py-1 border rounded text-sm"
-                onClick={()=>setOpen(false)}
-                title="Close"
-              >x</button>
-            </div>
-            <div className="space-y-6">
-              <KeySection
-                title="OpenAI"
-                unlockedField="apiKey"
-                encryptedField="apiKeyEncrypted"
-                placeholder="sk-..."
-                onClose={()=>setOpen(false)}
-              />
-              <div className="border-t dark:border-gray-700" />
-              <KeySection
-                title="Anthropic"
-                unlockedField="anthropicApiKey"
-                encryptedField="anthropicApiKeyEncrypted"
-                placeholder="sk-ant-..."
-                onClose={()=>setOpen(false)}
-              />
-              <div className="border-t dark:border-gray-700" />
-              <KeySection
-                title="Google Gemini"
-                unlockedField="geminiApiKey"
-                encryptedField="geminiApiKeyEncrypted"
-                placeholder="AIza..."
-                onClose={()=>setOpen(false)}
-              />
-              <div className="border-t dark:border-gray-700" />
-              <KeySection
-                title="Baseten"
-                unlockedField="basetenApiKey"
-                encryptedField="basetenApiKeyEncrypted"
-                placeholder="bt-..."
-                onClose={()=>setOpen(false)}
-              />
+        <div className="fixed inset-0 z-50 bg-black/30 p-4">
+          <div className="flex min-h-full items-center justify-center">
+            <div className="flex w-full max-w-[460px] max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded border bg-white dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" role="dialog" aria-modal="true" aria-label="Settings">
+              <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-2">
+                <div className="font-semibold">Settings</div>
+                <button
+                  className="px-2 py-1 border rounded text-sm"
+                  onClick={()=>setOpen(false)}
+                  title="Close"
+                >x</button>
+              </div>
+              <div className="min-h-0 overflow-y-auto px-4 pb-4">
+                <div className="space-y-6">
+                  <KeySection
+                    title="OpenAI"
+                    unlockedField="apiKey"
+                    encryptedField="apiKeyEncrypted"
+                    placeholder="sk-..."
+                    onClose={()=>setOpen(false)}
+                  />
+                  <div className="border-t dark:border-gray-700" />
+                  <KeySection
+                    title="Anthropic"
+                    unlockedField="anthropicApiKey"
+                    encryptedField="anthropicApiKeyEncrypted"
+                    placeholder="sk-ant-..."
+                    onClose={()=>setOpen(false)}
+                  />
+                  <div className="border-t dark:border-gray-700" />
+                  <KeySection
+                    title="Google Gemini"
+                    unlockedField="geminiApiKey"
+                    encryptedField="geminiApiKeyEncrypted"
+                    placeholder="AIza..."
+                    onClose={()=>setOpen(false)}
+                  />
+                  <div className="border-t dark:border-gray-700" />
+                  <KeySection
+                    title="Baseten"
+                    unlockedField="basetenApiKey"
+                    encryptedField="basetenApiKeyEncrypted"
+                    placeholder="bt-..."
+                    onClose={()=>setOpen(false)}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
