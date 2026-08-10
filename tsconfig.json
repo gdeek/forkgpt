@@ -15,6 +15,6 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["jest", "react", "react-dom"]
   },
-  "include": ["src", "tests", "vite.config.mts"],
+  "include": ["src", "tests"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

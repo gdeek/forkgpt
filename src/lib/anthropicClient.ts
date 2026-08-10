@@ -83,6 +83,7 @@ const anthropicBase = (): string => (import.meta && (import.meta as any).env && 
 export const streamResponse = async (opts: StreamOptions): Promise<void> => {
   const { apiKey, model, messages, temperature, maxTokens, reasoningEffort, enableWebSearch, onDelta, signal } = opts
   const { system, messages: anthropicMessages } = toAnthropicPayload(messages)
+  const isClaude5 = model === 'claude-opus-5' || model === 'claude-sonnet-5'
   const requestedBudget = mapReasoningBudget(reasoningEffort)
   const outputMaxTokensBase = typeof maxTokens === 'number' ? maxTokens : 8000
   const outputMaxTokens = typeof requestedBudget === 'number' && outputMaxTokensBase <= requestedBudget
@@ -97,7 +98,10 @@ export const streamResponse = async (opts: StreamOptions): Promise<void> => {
   }
   if (system) body.system = system
   if (typeof temperature === 'number') body.temperature = temperature
-  if (typeof requestedBudget === 'number' && requestedBudget > 0) {
+  if (isClaude5) {
+    body.thinking = { type: 'adaptive' }
+    body.output_config = { effort: reasoningEffort ?? 'high' }
+  } else if (typeof requestedBudget === 'number' && requestedBudget > 0) {
     const maxAllowed = Math.max(0, outputMaxTokens - 1)
     const budgetTokens = Math.min(requestedBudget, maxAllowed)
     if (budgetTokens >= 1024) {

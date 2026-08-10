@@ -23,10 +23,12 @@ A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a r
 - Supports Web Search, Attachments (including images and PDFs).
 
 ## Supported Models
-- OpenAI: `gpt-5.2`, `gpt-5.2-codex`, `o3`
-- Anthropic: `claude-opus-4.6`, `claude-sonnet-4.6`
-- Google Gemini: `gemini-3.1-pro-preview`
-- Moonshot: `kimi-k2.5`
+- OpenAI: `gpt-5.2-codex`, `o3`, `gpt-5.6-sol`, `gpt-5.6-luna`
+- Anthropic: `claude-opus-5`, `claude-sonnet-5`
+- Google: `gemini-3.1-pro-preview`, `gemini-3.6-flash`
+- Moonshot AI via Baseten: `kimi-k3`
+- Z.AI via Baseten: `glm-5.2`
+- DeepSeek via Baseten: `deepseek-v4-flash-0731`
 
 ## Privacy & Security
 - Where data lives: `localStorage` for chat data (per‑origin, per‑profile).
@@ -56,4 +58,4 @@ A tiny, scrappy chat playground. It’s like ChatGPT, but with a superpower: a r
 
 - Open http://localhost:5173
 
-- Click Settings to add provider API keys (OpenAI, Anthropic, Gemini, Moonshot). Set a strong password to encrypt them at rest.
+- Click Settings to add provider API keys (OpenAI, Anthropic, Google Gemini, and Baseten). Set a strong password to encrypt them at rest.

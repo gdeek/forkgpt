@@ -15,8 +15,9 @@ export interface StreamOptions {
 
 const geminiBase = (): string => ((import.meta as any)?.env?.DEV ? '/gemini/v1beta/openai' : 'https://generativelanguage.googleapis.com/v1beta/openai')
 
-const mapReasoningEffort = (effort?: ReasoningEffortValue): 'low' | 'medium' | 'high' | undefined => {
+const mapReasoningEffort = (model: string, effort?: ReasoningEffortValue): 'minimal' | 'low' | 'medium' | 'high' | undefined => {
   if (!effort) return undefined
+  if (model === 'gemini-3.6-flash' && effort === 'minimal') return 'minimal'
   if (effort === 'minimal') return 'low'
   if (effort === 'medium') return 'medium'
   if (effort === 'high' || effort === 'xhigh') return 'high'
@@ -37,7 +38,7 @@ export const streamResponse = async (opts: StreamOptions): Promise<void> => {
     onDelta,
     signal,
     buildProviderPayload: (effort) => {
-      const mapped = mapReasoningEffort(effort)
+      const mapped = mapReasoningEffort(model, effort)
       return mapped ? { reasoning_effort: mapped } : undefined
     },
   })

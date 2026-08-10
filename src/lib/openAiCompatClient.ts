@@ -10,8 +10,10 @@ export interface OpenAiCompatStreamOptions {
   maxTokens?: number
   reasoningEffort?: ReasoningEffortValue
   onDelta: (delta: string) => void
+  onReasoningDelta?: (delta: string) => void
   signal?: AbortSignal
   buildProviderPayload?: (effort?: ReasoningEffortValue) => Record<string, unknown> | undefined
+  preserveReasoningContent?: boolean
 }
 
 const toCompatPart = (part: any): Record<string, unknown> | null => {
@@ -25,21 +27,24 @@ const toCompatPart = (part: any): Record<string, unknown> | null => {
   return null
 }
 
-const toCompatMessage = (message: ChatMessage): Record<string, unknown> => {
+const toCompatMessage = (message: ChatMessage, preserveReasoningContent: boolean): Record<string, unknown> => {
+  const reasoning = preserveReasoningContent && message.role === 'assistant' && message.reasoningContent
+    ? { reasoning_content: message.reasoningContent }
+    : {}
   if (typeof message.content === 'string') {
-    return { role: message.role, content: message.content }
+    return { role: message.role, content: message.content, ...reasoning }
   }
   const parts = message.content.map(toCompatPart).filter((x): x is Record<string, unknown> => !!x)
-  if (parts.length === 0) return { role: message.role, content: '' }
-  return { role: message.role, content: parts }
+  if (parts.length === 0) return { role: message.role, content: '', ...reasoning }
+  return { role: message.role, content: parts, ...reasoning }
 }
 
 export const streamOpenAiCompat = async (opts: OpenAiCompatStreamOptions): Promise<void> => {
-  const { apiKey, baseUrl, model, messages, temperature, maxTokens, reasoningEffort, onDelta, signal, buildProviderPayload } = opts
+  const { apiKey, baseUrl, model, messages, temperature, maxTokens, reasoningEffort, onDelta, onReasoningDelta, signal, buildProviderPayload, preserveReasoningContent = false } = opts
 
   const payload: Record<string, unknown> = {
     model,
-    messages: messages.map(toCompatMessage),
+    messages: messages.map(message => toCompatMessage(message, preserveReasoningContent)),
     stream: true,
   }
   if (typeof temperature === 'number') payload.temperature = temperature
@@ -79,9 +84,9 @@ export const streamOpenAiCompat = async (opts: OpenAiCompatStreamOptions): Promi
       try {
         const json = JSON.parse(data)
         const delta = json?.choices?.[0]?.delta
+        if (typeof delta?.reasoning_content === 'string') onReasoningDelta?.(delta.reasoning_content)
         if (typeof delta?.content === 'string') {
           onDelta(delta.content)
-          continue
         }
         if (Array.isArray(delta?.content)) {
           for (const part of delta.content) {

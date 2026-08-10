@@ -6,6 +6,7 @@ import type { ContentPart } from './attachments'
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string | ContentPart[]
+  reasoningContent?: string
 }
 
 const approxTokenCount = (text: string): number => {
@@ -14,12 +15,19 @@ const approxTokenCount = (text: string): number => {
 }
 
 const countMessagesTokens = (msgs: ChatMessage[]): number => msgs.reduce((acc, m) => {
-  if (typeof m.content === 'string') return acc + approxTokenCount(m.content)
+  const reasoningTokens = m.reasoningContent ? approxTokenCount(m.reasoningContent) : 0
+  if (typeof m.content === 'string') return acc + approxTokenCount(m.content) + reasoningTokens
   // Sum only text parts
   let sum = 0
   for (const p of m.content) if (p.type === 'text') sum += approxTokenCount(p.text)
-  return acc + sum
+  return acc + sum + reasoningTokens
 }, 0)
+
+const toChatMessage = (message: Message): ChatMessage => ({
+  role: message.role,
+  content: message.content,
+  ...(message.reasoningContent ? { reasoningContent: message.reasoningContent } : {}),
+})
 
 export interface BuildReplyContextParams {
   session: Session
@@ -89,7 +97,7 @@ export const buildReplyContext = (params: BuildReplyContextParams): ChatMessage[
     if (m.role === 'assistant' && isEmptyContent(m.content as any)) continue
     // user/system should never be empty, but guard anyway
     if ((m.role === 'user' || m.role === 'system') && isEmptyContent(m.content as any)) continue
-    out.push({ role: m.role, content: m.content })
+    out.push(toChatMessage(m))
   }
 
   // 4) Trim: first drop oldest from branch selection, then oldest main
@@ -163,7 +171,7 @@ export const buildMainContext = (params: BuildMainContextParams): ChatMessage[] 
   const addedIds = new Set<string>()
   const push = (m?: Message) => {
     if (!m || addedIds.has(m.id)) return
-    out.push({ role: m.role, content: m.content })
+    out.push(toChatMessage(m))
     addedIds.add(m.id)
   }
   for (const a of orderedAnchors) {
@@ -187,7 +195,7 @@ export const buildMainContext = (params: BuildMainContextParams): ChatMessage[] 
   for (const m of limited) {
     if (m.role === 'assistant' && isEmptyContent(m.content as any)) continue
     if ((m.role === 'user' || m.role === 'system') && isEmptyContent(m.content as any)) continue
-    out.push({ role: m.role, content: m.content })
+    out.push(toChatMessage(m))
   }
 
   // trim: branch-first then main

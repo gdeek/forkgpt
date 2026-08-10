@@ -4,7 +4,8 @@ import { nanoid } from 'nanoid'
 import type { Message, ReasoningEffortValue, Session } from './types'
 import { buildMainContext, buildReplyContext } from './lib/contextBuilder'
 import { streamResponse } from './lib/openaiClient'
-import { UI_MODELS, getProviderForModel, getReasoningEffortForModel, getReasoningEffortOptions, mapUiModelToApi, supportsImages, supportsReasoningEffort, supportsTemperature, supportsWebSearch } from './lib/models'
+import { UI_MODEL_GROUPS, getProviderForModel, getReasoningEffortForModel, getReasoningEffortOptions, mapUiModelToApi, supportsImages, supportsReasoningEffort, supportsTemperature, supportsWebSearch } from './lib/models'
+import type { ModelProvider } from './lib/models'
 import { generateSessionTitle } from './lib/titleGenerator'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { encryptString, decryptString } from './lib/crypto'
@@ -12,20 +13,22 @@ import { AttachmentPicker } from './components/AttachmentPicker'
 import { MAX_ATTACHMENTS, MAX_TOTAL_BYTES, storeNewAttachment, prepareAttachmentParts, LARGE_FILE_SUMMARY_THRESHOLD, sniffKind } from './lib/attachments'
 import type { AttachmentMeta, Settings } from './types'
 
-const MODELS = UI_MODELS
+const DEFAULT_MODEL = 'gpt-5.6-sol'
 
-const providerName = (provider: 'openai' | 'anthropic' | 'gemini' | 'moonshot'): string => {
+const providerName = (provider: ModelProvider): string => {
   if (provider === 'anthropic') return 'Anthropic'
   if (provider === 'gemini') return 'Google Gemini'
-  if (provider === 'moonshot') return 'Moonshot'
+  if (provider === 'baseten') return 'Baseten'
+  if (provider === 'unsupported') return 'Unavailable model'
   return 'OpenAI'
 }
 
-const getApiKeyForModel = (m: string, settings: Settings): { key?: string; provider: 'openai' | 'anthropic' | 'gemini' | 'moonshot' } => {
+const getApiKeyForModel = (m: string, settings: Settings): { key?: string; provider: ModelProvider } => {
   const provider = getProviderForModel(mapUiModelToApi(m))
   if (provider === 'anthropic') return { key: settings.anthropicApiKey?.trim(), provider }
   if (provider === 'gemini') return { key: settings.geminiApiKey?.trim(), provider }
-  if (provider === 'moonshot') return { key: settings.moonshotApiKey?.trim(), provider }
+  if (provider === 'baseten') return { key: settings.basetenApiKey?.trim(), provider }
+  if (provider === 'unsupported') return { key: undefined, provider }
   return { key: settings.apiKey?.trim(), provider }
 }
 
@@ -38,7 +41,7 @@ const truncateText = (text: string, max = 20): string => {
 const AppInner: React.FC = () => {
   const { state, dispatch } = useApp()
   const [composer, setComposer] = useState('')
-  const [model, setModel] = useState(MODELS[0].id)
+  const [model, setModel] = useState(DEFAULT_MODEL)
   const [isStreaming, setIsStreaming] = useState(false)
   const [aborter, setAborter] = useState<AbortController | null>(null)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
@@ -177,6 +180,10 @@ const AppInner: React.FC = () => {
         maxTokens: session?.maxTokens,
         enableWebSearch: webSearch && supportsWebSearch(model),
         onDelta: (delta) => dispatch({ type: 'updateMessage', id: assistantMsg.id, patch: { content: (assistantMsg.content += delta) } }),
+        onReasoningDelta: (delta) => {
+          assistantMsg.reasoningContent = `${assistantMsg.reasoningContent ?? ''}${delta}`
+          dispatch({ type: 'updateMessage', id: assistantMsg.id, patch: { reasoningContent: assistantMsg.reasoningContent } })
+        },
         signal: controller.signal,
       })
     } catch (e: any) {
@@ -228,10 +235,10 @@ const AppInner: React.FC = () => {
             {hasSession ? (
               mainMessages.map(m => (
                 <div key={m.id} className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded p-3">
-                  <div className="text-xs text-gray-500 mb-1">{m.role}{m.model ? ` · ${m.model}` : ''}</div>
+                  <div className="text-xs text-gray-500 mb-1">{m.role}{m.model ? ` · ${m.model}` : ''}{m.model === 'kimi-k2.5' ? ' · unavailable' : ''}</div>
                   <div className="whitespace-pre-wrap">{m.content || <span className="text-gray-400">…</span>}</div>
                   {/* Main chat messages are always included in context now. */}
-                  {m.role === 'assistant' && !m.anchorMessageId && (
+                  {m.role === 'assistant' && !m.anchorMessageId && m.model !== 'kimi-k2.5' && (
                     <div className="mt-2">
                       <button className="text-sm px-2 py-1 border rounded" onClick={()=>onReply(m.id)}>Reply →</button>
                     </div>
@@ -246,7 +253,11 @@ const AppInner: React.FC = () => {
             <div className="border-t dark:border-gray-700 bg-white dark:bg-gray-900 p-3 flex flex-col gap-2">
               <div className="flex items-start gap-2">
                 <select className="border rounded px-2 py-1 bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700" value={model} onChange={e=>setModel(e.target.value as any)}>
-                  {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                  {UI_MODEL_GROUPS.map(group => (
+                    <optgroup key={group.company} label={group.company}>
+                      {group.models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                    </optgroup>
+                  ))}
                 </select>
                 <div className="flex-1 flex items-center gap-3">
                   <AttachmentPicker compact pending={pendingFiles} metas={[]} onSelectFiles={(files)=>{
@@ -443,10 +454,10 @@ const SettingsButton: React.FC = () => {
               />
               <div className="border-t dark:border-gray-700" />
               <KeySection
-                title="Moonshot"
-                unlockedField="moonshotApiKey"
-                encryptedField="moonshotApiKeyEncrypted"
-                placeholder="sk-..."
+                title="Baseten"
+                unlockedField="basetenApiKey"
+                encryptedField="basetenApiKeyEncrypted"
+                placeholder="bt-..."
                 onClose={()=>setOpen(false)}
               />
             </div>
@@ -827,7 +838,8 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
 
   const onSendReply = async (parentId?: string) => {
     if (!replyText.trim()) return
-    const { key, provider } = getApiKeyForModel(anchor.model ?? 'gpt-5.2', state.settings)
+    if (anchor.model === 'kimi-k2.5') { alert('Kimi K2.5 is no longer available'); return }
+    const { key, provider } = getApiKeyForModel(anchor.model ?? 'gpt-5.6-sol', state.settings)
     if (!key) { alert(`Set your ${providerName(provider)} API key in Settings`); return }
     // Guard: replies should target assistant messages. If a user node was passed,
     // walk up to the nearest assistant ancestor within this thread; otherwise fall back to root.
@@ -841,7 +853,7 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
       }
       parentId = node?.role === 'assistant' ? node.id : undefined
     }
-    const user = {
+    const user: Message = {
       id: nanoid(), sessionId: session.id, role: 'user' as const, content: replyText, includeInContext: false, createdAt: Date.now(), anchorMessageId: anchorId, parentId,
     }
     // Attachments for reply (same limits)
@@ -856,7 +868,7 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
     setReplyText('')
     setPendingFiles([])
     const assistant: Message = {
-      id: nanoid(), sessionId: session.id, role: 'assistant', content: '', includeInContext: false, createdAt: Date.now(), anchorMessageId: anchorId, parentId: user.id, model: anchor.model ?? 'gpt-5.2',
+      id: nanoid(), sessionId: session.id, role: 'assistant', content: '', includeInContext: false, createdAt: Date.now(), anchorMessageId: anchorId, parentId: user.id, model: anchor.model ?? 'gpt-5.6-sol',
     }
     dispatch({ type: 'addMessage', message: assistant })
 
@@ -907,6 +919,10 @@ const ReplyViewer: React.FC<{ width: number }> = ({ width }) => {
         maxTokens: session?.maxTokens,
         enableWebSearch: replySearch && supportsWebSearch(assistant.model || ''),
         onDelta: (delta) => dispatch({ type: 'updateMessage', id: assistant.id, patch: { content: (assistant.content += delta) } }),
+        onReasoningDelta: (delta) => {
+          assistant.reasoningContent = `${assistant.reasoningContent ?? ''}${delta}`
+          dispatch({ type: 'updateMessage', id: assistant.id, patch: { reasoningContent: assistant.reasoningContent } })
+        },
         signal: controller.signal,
       })
     } catch (e: any) {
@@ -1004,8 +1020,8 @@ export default App
 // reusable key management panel for providers
 const KeySection: React.FC<{
   title: string
-  unlockedField: 'apiKey' | 'anthropicApiKey' | 'geminiApiKey' | 'moonshotApiKey'
-  encryptedField: 'apiKeyEncrypted' | 'anthropicApiKeyEncrypted' | 'geminiApiKeyEncrypted' | 'moonshotApiKeyEncrypted'
+  unlockedField: 'apiKey' | 'anthropicApiKey' | 'geminiApiKey' | 'basetenApiKey'
+  encryptedField: 'apiKeyEncrypted' | 'anthropicApiKeyEncrypted' | 'geminiApiKeyEncrypted' | 'basetenApiKeyEncrypted'
   placeholder: string
   onClose: () => void
 }> = ({ title, unlockedField, encryptedField, placeholder, onClose }) => {

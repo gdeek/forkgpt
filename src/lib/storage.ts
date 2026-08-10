@@ -48,7 +48,7 @@ export const saveSettings = (settings: Settings) => {
         apiKey: _volatileApiKey,
         anthropicApiKey: _volatileAnthropicKey,
         geminiApiKey: _volatileGeminiKey,
-        moonshotApiKey: _volatileMoonshotKey,
+        basetenApiKey: _volatileBasetenKey,
         /* @ts-ignore defensive */ password: _pwd,
         ...rest
       } = settings as any

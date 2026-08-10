@@ -1,5 +1,5 @@
 export type Role = 'user' | 'assistant' | 'system'
-export type ReasoningEffortValue = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'none' | 'enabled' | 'disabled'
+export type ReasoningEffortValue = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'none' | 'enabled' | 'disabled'
 
 export interface Session {
   readonly id: string
@@ -18,6 +18,7 @@ export interface Message {
   readonly sessionId: string
   role: Role
   content: string
+  reasoningContent?: string
   model?: string
   parentId?: string
   anchorMessageId?: string
@@ -30,12 +31,12 @@ export interface Settings {
   apiKey?: string
   anthropicApiKey?: string
   geminiApiKey?: string
-  moonshotApiKey?: string
+  basetenApiKey?: string
   defaultModel?: string
   apiKeyEncrypted?: string
   anthropicApiKeyEncrypted?: string
   geminiApiKeyEncrypted?: string
-  moonshotApiKeyEncrypted?: string
+  basetenApiKeyEncrypted?: string
 }
 
 export interface UIState {

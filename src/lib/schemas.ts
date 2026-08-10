@@ -4,7 +4,7 @@ export const settingsSchema = z.object({
   apiKey: z.string().min(10).optional(),
   anthropicApiKey: z.string().min(10).optional(),
   geminiApiKey: z.string().min(10).optional(),
-  moonshotApiKey: z.string().min(10).optional(),
+  basetenApiKey: z.string().min(10).optional(),
   defaultModel: z.string().optional(),
 })
 

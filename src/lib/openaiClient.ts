@@ -2,7 +2,7 @@ import type { ChatMessage } from './contextBuilder'
 import { getProviderForModel, supportsWebSearch } from './models'
 import { streamResponse as anthropicStream } from './anthropicClient'
 import { streamResponse as geminiStream } from './geminiClient'
-import { streamResponse as moonshotStream } from './moonshotClient'
+import { streamResponse as basetenStream } from './basetenClient'
 import type { ReasoningEffortValue } from '../types'
 
 export interface StreamOptions {
@@ -14,11 +14,12 @@ export interface StreamOptions {
   reasoningEffort?: ReasoningEffortValue
   enableWebSearch?: boolean
   onDelta: (delta: string) => void
+  onReasoningDelta?: (delta: string) => void
   signal?: AbortSignal
 }
 
 export const streamResponse = async (opts: StreamOptions): Promise<void> => {
-  const { apiKey, model, messages, temperature, maxTokens, reasoningEffort, enableWebSearch, onDelta, signal } = opts
+  const { apiKey, model, messages, temperature, maxTokens, reasoningEffort, enableWebSearch, onDelta, onReasoningDelta, signal } = opts
 
   const provider = getProviderForModel(model)
   if (provider === 'anthropic') {
@@ -27,9 +28,10 @@ export const streamResponse = async (opts: StreamOptions): Promise<void> => {
   if (provider === 'gemini') {
     return geminiStream({ apiKey, model, messages, temperature, maxTokens, reasoningEffort, onDelta, signal })
   }
-  if (provider === 'moonshot') {
-    return moonshotStream({ apiKey, model, messages, maxTokens, reasoningEffort, onDelta, signal })
+  if (provider === 'baseten') {
+    return basetenStream({ apiKey, model, messages, temperature, maxTokens, reasoningEffort, onDelta, onReasoningDelta, signal })
   }
+  if (provider === 'unsupported') throw new Error('This model is no longer available')
 
   // Convert ChatMessage[] to Responses API `input` format.
   // Map old Chat Completions parts to Responses input types.

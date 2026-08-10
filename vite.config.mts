@@ -17,11 +17,11 @@ export default defineConfig({
         secure: true,
         rewrite: (p: string) => p.replace(/^\/gemini/, ''),
       },
-      '/moonshot': {
-        target: 'https://api.moonshot.ai',
+      '/baseten': {
+        target: 'https://inference.baseten.co',
         changeOrigin: true,
         secure: true,
-        rewrite: (p: string) => p.replace(/^\/moonshot/, ''),
+        rewrite: (p: string) => p.replace(/^\/baseten/, ''),
       },
     },
   },
